@@ -16,6 +16,7 @@ lazy val core = module("core")
   .settings(
     libraryDependencies ++= Seq(
       libs.osLib.value,
+      libs.scalaXml.value,
       libs.circeCore.value,
       libs.circeParser.value,
       libs.circeGeneric.value,
@@ -75,6 +76,8 @@ lazy val props = new {
 
   val ExtrasVersion = "0.51.0"
 
+  val ScalaXmlVersion = "2.4.0"
+
   val licenses = List(License.MIT)
 }
 
@@ -94,6 +97,8 @@ lazy val libs = new {
   lazy val cue4s = Def.setting("tech.neander" %%% "cue4s" % props.Cue4sVersion)
 
   lazy val extrasScalaIo = Def.setting("io.kevinlee" %%% "extras-scala-io" % props.ExtrasVersion)
+
+  lazy val scalaXml = Def.setting("org.scala-lang.modules" %%% "scala-xml" % props.ScalaXmlVersion)
 
   lazy val tests = new {
     lazy val hedgehogCore = Def.setting("qa.hedgehog" %%% "hedgehog-core" % props.HedgehogVersion % Test)

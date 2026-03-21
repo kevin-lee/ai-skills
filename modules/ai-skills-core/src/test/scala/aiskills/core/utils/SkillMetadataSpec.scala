@@ -1,0 +1,52 @@
+package aiskills.core.utils
+
+import aiskills.core.{SkillSourceMetadata, SkillSourceType}
+import hedgehog.*
+import hedgehog.runner.*
+
+object SkillMetadataSpec extends Properties:
+
+  override def tests: List[Test] = List(
+    example("writes and reads metadata", testWriteAndRead),
+    example("returns None when metadata is missing", testMissing),
+    example("returns None for invalid JSON", testInvalidJson),
+  )
+
+  private def withTempDir[A](f: os.Path => A): A =
+    val tempDir = os.temp.dir(prefix = "aiskills-metadata-test-")
+    try f(tempDir)
+    finally os.remove.all(tempDir)
+
+  private def testWriteAndRead: Result =
+    withTempDir { tempDir =>
+      val payload = SkillSourceMetadata(
+        source = "owner/repo",
+        sourceType = SkillSourceType.Git,
+        repoUrl = Some("https://github.com/owner/repo"),
+        subpath = Some("skills/demo"),
+        installedAt = "2026-01-01T00:00:00.000Z",
+      )
+
+      SkillMetadata.writeSkillMetadata(tempDir, payload)
+      val read = SkillMetadata.readSkillMetadata(tempDir)
+
+      Result.all(List(
+        Result.assert(read.isDefined),
+        read.get.source ==== payload.source,
+        read.get.sourceType ==== payload.sourceType,
+        read.get.repoUrl ==== payload.repoUrl,
+        read.get.subpath ==== payload.subpath,
+        read.get.installedAt ==== payload.installedAt,
+      ))
+    }
+
+  private def testMissing: Result =
+    withTempDir { tempDir =>
+      Result.assert(SkillMetadata.readSkillMetadata(tempDir).isEmpty)
+    }
+
+  private def testInvalidJson: Result =
+    withTempDir { tempDir =>
+      os.write(tempDir / SkillMetadata.SkillMetadataFile, "{not-json")
+      Result.assert(SkillMetadata.readSkillMetadata(tempDir).isEmpty)
+    }
