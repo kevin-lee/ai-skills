@@ -223,8 +223,7 @@ object Main {
     name: String,
     header: String,
     main: Opts[Unit],
-    helpFlag: Boolean = true,
-    version: String = ""
+    version: String,
   ): Command[Unit] = {
 
     val showVersion =
@@ -234,7 +233,7 @@ object Main {
           .flag("version", "Print the version number and exit.", visibility = Visibility.Partial)
           .map(_ => System.err.println(version))
 
-    Command(name, header, helpFlag)(showVersion.orElse(main))
+    Command(name, header, helpFlag = true)(showVersion.orElse(main))
   }
 
   def main(args: Array[String]): Unit =
