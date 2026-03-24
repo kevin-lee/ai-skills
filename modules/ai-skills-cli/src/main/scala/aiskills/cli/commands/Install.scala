@@ -384,7 +384,7 @@ object Install {
     val skillsToInstall: List[SkillInfo] =
       if !options.yes && skillInfos.length > 1 then {
         val labels = skillInfos.map { info =>
-          s"${info.skillName.padTo(25, ' ').bold} ${formatSize(info.size).dim}"
+          s"${info.skillName.padTo(25, ' ')} ${formatSize(info.size)}"
         }
 
         Prompts.sync.use { prompts =>
