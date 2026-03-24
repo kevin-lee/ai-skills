@@ -5,7 +5,7 @@ import aiskills.core.{Agent, SkillLocation}
 object Dirs {
 
   /** Get skills directory path for a specific agent. */
-  def getSkillsDir(agent: Agent, global: Boolean = false): os.Path =
+  def getSkillsDir(agent: Agent, global: Boolean): os.Path =
     if global then os.home / os.RelPath(agent.globalDirName) / "skills"
     else os.pwd / os.RelPath(agent.projectDirName) / "skills"
 

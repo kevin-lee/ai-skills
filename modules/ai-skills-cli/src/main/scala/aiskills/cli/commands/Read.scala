@@ -6,7 +6,7 @@ import aiskills.core.utils.{Dirs, SkillNames, Skills}
 object Read {
 
   /** Read skill(s) to stdout (for AI agents). */
-  def readSkill(skillNames: List[String], options: ReadOptions = ReadOptions()): Unit = {
+  def readSkill(skillNames: List[String], options: ReadOptions): Unit = {
     val names = SkillNames.normalizeSkillNames(skillNames)
     if names.isEmpty then {
       System.err.println("Error: No skill names provided")

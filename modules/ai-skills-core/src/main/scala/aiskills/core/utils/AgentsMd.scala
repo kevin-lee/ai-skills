@@ -19,13 +19,15 @@ object AgentsMd {
 
     val skillTags = skills
       .map { s =>
+        // scalafix:off DisableSyntax.noXml
         val skillElem: Elem =
           <skill>
-          <name>{s.name}</name>
-          <description>{s.description}</description>
-          <location>{s.location.toString.toLowerCase}</location>
-          <agent>{s.agent.toString.toLowerCase}</agent>
-        </skill>
+            <name>{s.name}</name>
+            <description>{s.description}</description>
+            <location>{s.location.toString.toLowerCase}</location>
+            <agent>{s.agent.toString.toLowerCase}</agent>
+          </skill>
+        // scalafix:on
         printer.format(skillElem)
       }
       .mkString("\n\n")
