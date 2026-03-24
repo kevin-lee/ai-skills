@@ -4,7 +4,7 @@ import aiskills.core.{Agent, Skill, SkillLocation}
 import hedgehog.*
 import hedgehog.runner.*
 
-object AgentsMdSpec extends Properties:
+object AgentsMdSpec extends Properties {
 
   override def tests: List[Test] = List(
     example("generateSkillsXml: generates valid XML for skills", testGenerateXml),
@@ -30,37 +30,48 @@ object AgentsMdSpec extends Properties:
     Skill("xlsx", "Spreadsheet editing", SkillLocation.Global, Agent.Universal, os.home / "path" / "to" / "xlsx"),
   )
 
-  private def testGenerateXml: Result =
+  private def testGenerateXml: Result = {
     val xml = AgentsMd.generateSkillsXml(sampleSkills)
-    Result.all(List(
-      Result.assert(xml.contains("""<skills-system priority="1">""")),
-      Result.assert(xml.contains("<name>pdf</name>")),
-      Result.assert(xml.contains("<description>PDF manipulation</description>")),
-      Result.assert(xml.contains("<location>project</location>")),
-      Result.assert(xml.contains("<name>xlsx</name>")),
-      Result.assert(xml.contains("<description>Spreadsheet editing</description>")),
-      Result.assert(xml.contains("<location>global</location>")),
-      Result.assert(xml.contains("</skills-system>")),
-    ))
+    Result.all(
+      List(
+        Result.assert(xml.contains("""<skills-system priority="1">""")),
+        Result.assert(xml.contains("<name>pdf</name>")),
+        Result.assert(xml.contains("<description>PDF manipulation</description>")),
+        Result.assert(xml.contains("<location>project</location>")),
+        Result.assert(xml.contains("<name>xlsx</name>")),
+        Result.assert(xml.contains("<description>Spreadsheet editing</description>")),
+        Result.assert(xml.contains("<location>global</location>")),
+        Result.assert(xml.contains("</skills-system>")),
+      )
+    )
+  }
 
-  private def testUsageInstructions: Result =
-    val xml = AgentsMd.generateSkillsXml(List(
-      Skill("test", "Test skill", SkillLocation.Project, Agent.Claude, os.pwd / "path"),
-    ))
-    Result.all(List(
-      Result.assert(xml.contains("<usage>")),
-      Result.assert(xml.contains("aiskills read")),
-      Result.assert(xml.contains("</usage>")),
-    ))
+  private def testUsageInstructions: Result = {
+    val xml = AgentsMd.generateSkillsXml(
+      List(
+        Skill("test", "Test skill", SkillLocation.Project, Agent.Claude, os.pwd / "path"),
+      )
+    )
+    Result.all(
+      List(
+        Result.assert(xml.contains("<usage>")),
+        Result.assert(xml.contains("aiskills read")),
+        Result.assert(xml.contains("</usage>")),
+      )
+    )
+  }
 
-  private def testEmptySkills: Result =
+  private def testEmptySkills: Result = {
     val xml = AgentsMd.generateSkillsXml(Nil)
-    Result.all(List(
-      Result.assert(xml.contains("<available-skills>")),
-      Result.assert(xml.contains("</available-skills>")),
-    ))
+    Result.all(
+      List(
+        Result.assert(xml.contains("<available-skills>")),
+        Result.assert(xml.contains("</available-skills>")),
+      )
+    )
+  }
 
-  private def testParseSkills: Result =
+  private def testParseSkills: Result = {
     val content =
       """# AGENTS.md
         |
@@ -78,20 +89,24 @@ object AgentsMdSpec extends Properties:
         |</skills-system>""".stripMargin
 
     val skills = AgentsMd.parseCurrentSkills(content)
-    Result.all(List(
-      Result.assert(skills.contains("pdf")),
-      Result.assert(skills.contains("xlsx")),
-      skills.length ==== 2,
-    ))
+    Result.all(
+      List(
+        Result.assert(skills.contains("pdf")),
+        Result.assert(skills.contains("xlsx")),
+        skills.length ==== 2,
+      )
+    )
+  }
 
   private def testParseEmpty: Result =
     AgentsMd.parseCurrentSkills("# AGENTS.md\n\nNo skills here.").length ==== 0
 
-  private def testParseMalformed: Result =
+  private def testParseMalformed: Result = {
     val skills = AgentsMd.parseCurrentSkills("<skill><name>broken")
     Result.assert(skills.isEmpty)
+  }
 
-  private def testReplaceXml: Result =
+  private def testReplaceXml: Result = {
     val content =
       """# AGENTS.md
         |
@@ -102,14 +117,17 @@ object AgentsMdSpec extends Properties:
         |Other content""".stripMargin
 
     val newSection = """<skills-system priority="1">NEW CONTENT</skills-system>"""
-    val result = AgentsMd.replaceSkillsSection(content, newSection)
-    Result.all(List(
-      Result.assert(result.contains("NEW CONTENT")),
-      Result.assert(!result.contains("OLD CONTENT")),
-      Result.assert(result.contains("Other content")),
-    ))
+    val result     = AgentsMd.replaceSkillsSection(content, newSection)
+    Result.all(
+      List(
+        Result.assert(result.contains("NEW CONTENT")),
+        Result.assert(!result.contains("OLD CONTENT")),
+        Result.assert(result.contains("Other content")),
+      )
+    )
+  }
 
-  private def testReplaceHtml: Result =
+  private def testReplaceHtml: Result = {
     val content =
       """# AGENTS.md
         |
@@ -120,22 +138,28 @@ object AgentsMdSpec extends Properties:
         |Footer""".stripMargin
 
     val newSection = "<skills-system>NEW SKILLS</skills-system>"
-    val result = AgentsMd.replaceSkillsSection(content, newSection)
-    Result.all(List(
-      Result.assert(result.contains("NEW SKILLS")),
-      Result.assert(!result.contains("OLD SKILLS")),
-    ))
+    val result     = AgentsMd.replaceSkillsSection(content, newSection)
+    Result.all(
+      List(
+        Result.assert(result.contains("NEW SKILLS")),
+        Result.assert(!result.contains("OLD SKILLS")),
+      )
+    )
+  }
 
-  private def testAppend: Result =
-    val content = "# AGENTS.md\n\nSome content."
+  private def testAppend: Result = {
+    val content    = "# AGENTS.md\n\nSome content."
     val newSection = "<skills-system>SKILLS</skills-system>"
-    val result = AgentsMd.replaceSkillsSection(content, newSection)
-    Result.all(List(
-      Result.assert(result.contains("Some content.")),
-      Result.assert(result.contains("<skills-system>SKILLS</skills-system>")),
-    ))
+    val result     = AgentsMd.replaceSkillsSection(content, newSection)
+    Result.all(
+      List(
+        Result.assert(result.contains("Some content.")),
+        Result.assert(result.contains("<skills-system>SKILLS</skills-system>")),
+      )
+    )
+  }
 
-  private def testRemoveXml: Result =
+  private def testRemoveXml: Result = {
     val content =
       """# AGENTS.md
         |
@@ -146,16 +170,20 @@ object AgentsMdSpec extends Properties:
         |Footer""".stripMargin
 
     val result = AgentsMd.removeSkillsSection(content)
-    Result.all(List(
-      Result.assert(!result.contains("Skills content")),
-      Result.assert(result.contains("Footer")),
-    ))
+    Result.all(
+      List(
+        Result.assert(!result.contains("Skills content")),
+        Result.assert(result.contains("Footer")),
+      )
+    )
+  }
 
-  private def testRemoveNone: Result =
+  private def testRemoveNone: Result = {
     val content = "# AGENTS.md\n\nNo skills."
     AgentsMd.removeSkillsSection(content) ==== content
+  }
 
-  private def testXmlEscaping: Result =
+  private def testXmlEscaping: Result = {
     val skills = List(
       Skill(
         "test & <demo>",
@@ -165,19 +193,22 @@ object AgentsMdSpec extends Properties:
         os.pwd / "path",
       ),
     )
-    val xml = AgentsMd.generateSkillsXml(skills)
-    Result.all(List(
-      Result.assert(xml.contains("&amp;")),
-      Result.assert(xml.contains("&lt;")),
-      Result.assert(xml.contains("&gt;")),
-      Result.assert(!xml.contains("<demo>")),
-      Result.assert(!xml.contains("<special>")),
-      Result.assert(xml.contains("test &amp; &lt;demo&gt;")),
-      Result.assert(xml.contains("&quot;")),
-      Result.assert(xml.contains("Handles &quot;quotes&quot; &amp; &lt;special&gt; chars")),
-    ))
+    val xml    = AgentsMd.generateSkillsXml(skills)
+    Result.all(
+      List(
+        Result.assert(xml.contains("&amp;")),
+        Result.assert(xml.contains("&lt;")),
+        Result.assert(xml.contains("&gt;")),
+        Result.assert(!xml.contains("<demo>")),
+        Result.assert(!xml.contains("<special>")),
+        Result.assert(xml.contains("test &amp; &lt;demo&gt;")),
+        Result.assert(xml.contains("&quot;")),
+        Result.assert(xml.contains("Handles &quot;quotes&quot; &amp; &lt;special&gt; chars")),
+      )
+    )
+  }
 
-  private def testReplaceOldFormat: Result =
+  private def testReplaceOldFormat: Result = {
     val content =
       """# AGENTS.md
         |
@@ -188,15 +219,18 @@ object AgentsMdSpec extends Properties:
         |Other content""".stripMargin
 
     val newSection = """<skills-system priority="1">NEW CONTENT</skills-system>"""
-    val result = AgentsMd.replaceSkillsSection(content, newSection)
-    Result.all(List(
-      Result.assert(result.contains("NEW CONTENT")),
-      Result.assert(!result.contains("OLD CONTENT")),
-      Result.assert(result.contains("Other content")),
-      Result.assert(!result.contains("skills_system")),
-    ))
+    val result     = AgentsMd.replaceSkillsSection(content, newSection)
+    Result.all(
+      List(
+        Result.assert(result.contains("NEW CONTENT")),
+        Result.assert(!result.contains("OLD CONTENT")),
+        Result.assert(result.contains("Other content")),
+        Result.assert(!result.contains("skills_system")),
+      )
+    )
+  }
 
-  private def testRemoveOldFormat: Result =
+  private def testRemoveOldFormat: Result = {
     val content =
       """# AGENTS.md
         |
@@ -207,13 +241,16 @@ object AgentsMdSpec extends Properties:
         |Footer""".stripMargin
 
     val result = AgentsMd.removeSkillsSection(content)
-    Result.all(List(
-      Result.assert(!result.contains("Skills content")),
-      Result.assert(result.contains("Footer")),
-      Result.assert(!result.contains("skills_system")),
-    ))
+    Result.all(
+      List(
+        Result.assert(!result.contains("Skills content")),
+        Result.assert(result.contains("Footer")),
+        Result.assert(!result.contains("skills_system")),
+      )
+    )
+  }
 
-  private def testParseKebabCase: Result =
+  private def testParseKebabCase: Result = {
     val content =
       """# AGENTS.md
         |
@@ -227,14 +264,21 @@ object AgentsMdSpec extends Properties:
         |</skills-system>""".stripMargin
 
     val skills = AgentsMd.parseCurrentSkills(content)
-    Result.all(List(
-      Result.assert(skills.contains("pdf")),
-      skills.length ==== 1,
-    ))
+    Result.all(
+      List(
+        Result.assert(skills.contains("pdf")),
+        skills.length ==== 1,
+      )
+    )
+  }
 
-  private def testAgentElement: Result =
+  private def testAgentElement: Result = {
     val xml = AgentsMd.generateSkillsXml(sampleSkills)
-    Result.all(List(
-      Result.assert(xml.contains("<agent>claude</agent>")),
-      Result.assert(xml.contains("<agent>universal</agent>")),
-    ))
+    Result.all(
+      List(
+        Result.assert(xml.contains("<agent>claude</agent>")),
+        Result.assert(xml.contains("<agent>universal</agent>")),
+      )
+    )
+  }
+}

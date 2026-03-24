@@ -1,6 +1,6 @@
 package aiskills.core.utils
 
-object SkillNames:
+object SkillNames {
 
   /** Normalize skill names: split commas, trim whitespace, deduplicate. */
   def normalizeSkillNames(input: List[String]): List[String] =
@@ -9,3 +9,4 @@ object SkillNames:
       .map(_.trim)
       .filter(_.nonEmpty)
       .distinct
+}

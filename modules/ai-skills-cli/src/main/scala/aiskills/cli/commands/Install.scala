@@ -5,9 +5,9 @@ import aiskills.core.utils.{AgentsMd, MarketplaceSkills, SkillMetadata, Yaml}
 import extras.scala.io.syntax.color.*
 import cue4s.*
 
-import scala.util.{Try, Success, Failure}
+import scala.util.{Failure, Success, Try}
 
-object Install:
+object Install {
 
   /** Check if the source is a local path. */
   def isLocalPath(source: String): Boolean =
@@ -26,17 +26,17 @@ object Install:
       source.endsWith(".git")
 
   /** Extract the repo name from the git URL. */
-  def getRepoName(repoUrl: String): Option[String] =
+  def getRepoName(repoUrl: String): Option[String] = {
     val cleaned = repoUrl.stripSuffix(".git")
     cleaned.split("/").lastOption.flatMap { lastPart =>
       val maybeRepo = if lastPart.contains(":") then lastPart.split(":").lastOption else Some(lastPart)
       maybeRepo.filter(_.nonEmpty)
     }
+  }
 
   /** Expand ~ to home directory. */
   def expandPath(source: String): os.Path =
-    if source.startsWith("~/") || source.startsWith("$HOME/") then
-      os.home / os.RelPath(source.drop(2))
+    if source.startsWith("~/") || source.startsWith("$HOME/") then os.home / os.RelPath(source.drop(2))
     else
       os.Path(source, os.pwd)
 
@@ -60,17 +60,17 @@ object Install:
     else f"${bytes / (1024.0 * 1024.0)}%.1fMB"
 
   /** Install skill from local path, GitHub, or Git URL. */
-  def installSkill(source: String, options: InstallOptions): Unit =
-    val agents = if options.allAgents then Agent.all else List(options.agent)
+  def installSkill(source: String, options: InstallOptions): Unit = {
+    val agents    = if options.allAgents then Agent.all else List(options.agent)
     val isProject = !options.global
 
     // Resolve source once
     val resolvedSource = resolveSource(source)
 
-    for agent <- agents do
-      val folder = s"${agent.projectDirName}/skills"
+    for agent <- agents do {
+      val folder       = s"${agent.projectDirName}/skills"
       val globalFolder = s"${agent.globalDirName}/skills"
-      val targetDir =
+      val targetDir    =
         if isProject then os.pwd / os.RelPath(folder)
         else os.home / os.RelPath(globalFolder)
 
@@ -78,78 +78,95 @@ object Install:
         if isProject then s"project ($folder)".blue
         else s"global (~/$globalFolder)".dim
 
-      if agents.length > 1 then
-        println(s"\n--- ${agent.toString} ---".bold)
+      if agents.length > 1 then println(s"\n--- ${agent.toString} ---".bold)
+      else ()
 
       println(s"Installing from: ${source.cyan}")
       println(s"Location: $location")
-      if agents.length <= 1 then
-        if isProject then
-          println(s"Default install is project-local (./$folder). Use --global for ~/$globalFolder.".dim)
+      if agents.length <= 1 then {
+        if isProject then println(
+          s"Default install is project-local (./$folder). Use --global for ~/$globalFolder.".dim
+        )
         else
           println(s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim)
+      } else ()
       println()
 
-      resolvedSource match
+      resolvedSource match {
         case ResolvedSource.Local(localPath, sourceInfo) =>
           installFromLocal(localPath, targetDir, options, sourceInfo)
 
         case ResolvedSource.Git(repoDir, repoUrl, skillSubpath, sourceInfo) =>
-          if skillSubpath.nonEmpty then
-            installSpecificSkill(repoDir, skillSubpath, targetDir, isProject, options, sourceInfo)
-          else
+          if skillSubpath.nonEmpty then installSpecificSkill(
+            repoDir,
+            skillSubpath,
+            targetDir,
+            isProject,
+            options,
+            sourceInfo
+          )
+          else {
             val repoName = getRepoName(repoUrl)
             installFromRepo(repoDir, targetDir, options, repoName, sourceInfo)
+          }
+      }
 
       AgentsMd.updateAgentsMdForAgent(agent, options.global)
+    }
 
-    resolvedSource match
+    resolvedSource match {
       case ResolvedSource.Git(_, _, _, _) => resolvedSource.cleanup()
-      case _                              => ()
+      case _ => ()
+    }
 
     printPostInstallHints(isProject)
+  }
 
   /** Resolved source — either local or a cloned git repo. */
-  private enum ResolvedSource:
+  private enum ResolvedSource {
     case Local(localPath: os.Path, sourceInfo: InstallSourceInfo)
     case Git(repoDir: os.Path, repoUrl: String, skillSubpath: String, sourceInfo: InstallSourceInfo)
 
-    def cleanup(): Unit = this match
+    def cleanup(): Unit = this match {
       case Git(repoDir, _, _, _) =>
         val tempDir = repoDir / os.up
         os.remove.all(tempDir)
       case _ => ()
+    }
+  }
+
+  /** Parse a non-local source into (repoUrl, skillSubpath). */
+  private def parseGitSource(source: String): (String, String) = {
+    if isGitUrl(source) then (source, "")
+    else {
+      val parts = source.split("/").toList
+      parts match {
+        case owner :: repo :: Nil =>
+          (s"https://github.com/$source", "")
+        case owner :: repo :: rest =>
+          (s"https://github.com/$owner/$repo", rest.mkString("/"))
+        case _ =>
+          System.err.println("Error: Invalid source format".red)
+          System.err.println("Expected: owner/repo, owner/repo/skill-name, git URL, or local path")
+          sys.exit(1)
+      }
+    }
+  }
 
   /** Resolve source into either a local path or a cloned git repo. */
-  private def resolveSource(source: String): ResolvedSource =
-    if isLocalPath(source) then
-      val localPath = expandPath(source)
+  private def resolveSource(source: String): ResolvedSource = {
+    if isLocalPath(source) then {
+      val localPath  = expandPath(source)
       val sourceInfo = InstallSourceInfo(
         source = source,
         sourceType = SkillSourceType.Local,
         localRoot = Some(localPath),
       )
       ResolvedSource.Local(localPath, sourceInfo)
-    else
-      var repoUrl: String = ""
-      var skillSubpath: String = ""
+    } else {
+      val (repoUrl, skillSubpath) = parseGitSource(source)
 
-      if isGitUrl(source) then
-        repoUrl = source
-      else
-        val parts = source.split("/").toList
-        parts match
-          case owner :: repo :: Nil =>
-            repoUrl = s"https://github.com/$source"
-          case owner :: repo :: rest =>
-            repoUrl = s"https://github.com/$owner/$repo"
-            skillSubpath = rest.mkString("/")
-          case _ =>
-            System.err.println("Error: Invalid source format".red)
-            System.err.println("Expected: owner/repo, owner/repo/skill-name, git URL, or local path")
-            sys.exit(1)
-
-      val tempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
+      val tempDir    = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
       os.makeDir.all(tempDir)
       val sourceInfo = InstallSourceInfo(
         source = source,
@@ -161,44 +178,51 @@ object Install:
       Try {
         os.proc("git", "clone", "--depth", "1", "--quiet", repoUrl, (tempDir / "repo").toString)
           .call(stderr = os.Pipe)
-      } match
+      } match {
         case Failure(ex) =>
           println(" failed")
           val msg = ex.getMessage
-          if msg.nonEmpty then println(msg.dim)
+          if msg.nonEmpty then println(msg.dim) else ()
           println("\nTip: For private repos, ensure git SSH keys or credentials are configured".yellow)
           os.remove.all(tempDir)
           sys.exit(1)
         case Success(_) =>
           println(" done")
+      }
 
       ResolvedSource.Git(tempDir / "repo", repoUrl, skillSubpath, sourceInfo)
+    }
+  }
 
-  private def printPostInstallHints(isProject: Boolean): Unit =
+  private def printPostInstallHints(isProject: Boolean): Unit = {
     println(s"\n${"Read skill:".dim} ${"aiskills read <skill-name>".cyan}")
-    if isProject then
-      println(s"${"Sync to other agents:".dim} ${"aiskills sync <skill-name> --from <agent> --to <agent>".cyan}")
+    if isProject then println(
+      s"${"Sync to other agents:".dim} ${"aiskills sync <skill-name> --from <agent> --to <agent>".cyan}"
+    )
+    else ()
+  }
 
   private def installFromLocal(
     localPath: os.Path,
     targetDir: os.Path,
     options: InstallOptions,
     sourceInfo: InstallSourceInfo,
-  ): Unit =
-    if !os.exists(localPath) then
+  ): Unit = {
+    if !os.exists(localPath) then {
       System.err.println(s"Error: Path does not exist: $localPath".red)
       sys.exit(1)
-
-    if !os.isDir(localPath) then
+    } else if !os.isDir(localPath) then {
       System.err.println("Error: Path must be a directory".red)
       sys.exit(1)
-
-    val skillMdPath = localPath / "SKILL.md"
-    if os.exists(skillMdPath) then
-      val isProject = targetDir.startsWith(os.pwd)
-      installSingleLocalSkill(localPath, targetDir, isProject, options, sourceInfo)
-    else
-      installFromRepo(localPath, targetDir, options, None, sourceInfo)
+    } else {
+      val skillMdPath = localPath / "SKILL.md"
+      if os.exists(skillMdPath) then {
+        val isProject = targetDir.startsWith(os.pwd)
+        installSingleLocalSkill(localPath, targetDir, isProject, options, sourceInfo)
+      } else
+        installFromRepo(localPath, targetDir, options, None, sourceInfo)
+    }
+  }
 
   private def installSingleLocalSkill(
     skillDir: os.Path,
@@ -206,31 +230,33 @@ object Install:
     isProject: Boolean,
     options: InstallOptions,
     sourceInfo: InstallSourceInfo,
-  ): Unit =
+  ): Unit = {
     val skillMdPath = skillDir / "SKILL.md"
-    val content = os.read(skillMdPath)
+    val content     = os.read(skillMdPath)
 
-    if !Yaml.hasValidFrontmatter(content) then
+    if !Yaml.hasValidFrontmatter(content) then {
       System.err.println("Error: Invalid SKILL.md (missing YAML frontmatter)".red)
       sys.exit(1)
+    } else {
+      val skillName  = skillDir.last
+      val targetPath = targetDir / skillName
 
-    val skillName = skillDir.last
-    val targetPath = targetDir / skillName
+      if !warnIfConflict(skillName, targetPath, isProject, options.yes) then println(s"Skipped: $skillName".yellow)
+      else {
+        os.makeDir.all(targetDir)
+        if !isPathInside(targetPath, targetDir) then {
+          System.err.println("Security error: Installation path outside target directory".red)
+          sys.exit(1)
+        } else {
+          os.copy(skillDir, targetPath, replaceExisting = true)
+          SkillMetadata.writeSkillMetadata(targetPath, buildLocalMetadata(sourceInfo, skillDir))
 
-    if !warnIfConflict(skillName, targetPath, isProject, options.yes) then
-      println(s"Skipped: $skillName".yellow)
-      return
-
-    os.makeDir.all(targetDir)
-    if !isPathInside(targetPath, targetDir) then
-      System.err.println("Security error: Installation path outside target directory".red)
-      sys.exit(1)
-
-    os.copy(skillDir, targetPath, replaceExisting = true)
-    SkillMetadata.writeSkillMetadata(targetPath, buildLocalMetadata(sourceInfo, skillDir))
-
-    println(s"\u2705 Installed: $skillName".green)
-    println(s"   Location: $targetPath")
+          println(s"\u2705 Installed: $skillName".green)
+          println(s"   Location: $targetPath")
+        }
+      }
+    }
+  }
 
   private def installSpecificSkill(
     repoDir: os.Path,
@@ -239,36 +265,39 @@ object Install:
     isProject: Boolean,
     options: InstallOptions,
     sourceInfo: InstallSourceInfo,
-  ): Unit =
-    val skillDir = repoDir / os.RelPath(skillSubpath)
+  ): Unit = {
+    val skillDir    = repoDir / os.RelPath(skillSubpath)
     val skillMdPath = skillDir / "SKILL.md"
 
-    if !os.exists(skillMdPath) then
+    if !os.exists(skillMdPath) then {
       System.err.println(s"Error: SKILL.md not found at $skillSubpath".red)
       sys.exit(1)
+    } else {
+      val content = os.read(skillMdPath)
+      if !Yaml.hasValidFrontmatter(content) then {
+        System.err.println("Error: Invalid SKILL.md (missing YAML frontmatter)".red)
+        sys.exit(1)
+      } else {
+        val skillName  = skillSubpath.split("/").last
+        val targetPath = targetDir / skillName
 
-    val content = os.read(skillMdPath)
-    if !Yaml.hasValidFrontmatter(content) then
-      System.err.println("Error: Invalid SKILL.md (missing YAML frontmatter)".red)
-      sys.exit(1)
+        if !warnIfConflict(skillName, targetPath, isProject, options.yes) then println(s"Skipped: $skillName".yellow)
+        else {
+          os.makeDir.all(targetDir)
+          if !isPathInside(targetPath, targetDir) then {
+            System.err.println("Security error: Installation path outside target directory".red)
+            sys.exit(1)
+          } else {
+            os.copy(skillDir, targetPath, replaceExisting = true)
+            SkillMetadata.writeSkillMetadata(targetPath, buildGitMetadata(sourceInfo, skillSubpath))
 
-    val skillName = skillSubpath.split("/").last
-    val targetPath = targetDir / skillName
-
-    if !warnIfConflict(skillName, targetPath, isProject, options.yes) then
-      println(s"Skipped: $skillName".yellow)
-      return
-
-    os.makeDir.all(targetDir)
-    if !isPathInside(targetPath, targetDir) then
-      System.err.println("Security error: Installation path outside target directory".red)
-      sys.exit(1)
-
-    os.copy(skillDir, targetPath, replaceExisting = true)
-    SkillMetadata.writeSkillMetadata(targetPath, buildGitMetadata(sourceInfo, skillSubpath))
-
-    println(s"\u2705 Installed: $skillName".green)
-    println(s"   Location: $targetPath")
+            println(s"\u2705 Installed: $skillName".green)
+            println(s"   Location: $targetPath")
+          }
+        }
+      }
+    }
+  }
 
   private def installFromRepo(
     repoDir: os.Path,
@@ -276,7 +305,7 @@ object Install:
     options: InstallOptions,
     repoName: Option[String],
     sourceInfo: InstallSourceInfo,
-  ): Unit =
+  ): Unit = {
     val rootSkillPath = repoDir / "SKILL.md"
 
     final case class SkillInfo(
@@ -287,121 +316,139 @@ object Install:
       size: Long,
     )
 
-    var skillInfos: List[SkillInfo] =
-      if os.exists(rootSkillPath) then
+    val rootSkillInfos: List[SkillInfo] =
+      if os.exists(rootSkillPath) then {
         val content = os.read(rootSkillPath)
-        if !Yaml.hasValidFrontmatter(content) then
+        if !Yaml.hasValidFrontmatter(content) then {
           System.err.println("Error: Invalid SKILL.md (missing YAML frontmatter)".red)
           sys.exit(1)
-
-        val frontmatterName = Yaml.extractYamlField(content, "name")
-        val skillName = if frontmatterName.nonEmpty then frontmatterName
-                        else repoName.getOrElse(repoDir.last)
-        List(SkillInfo(
-          skillDir = repoDir,
-          skillName = skillName,
-          description = Yaml.extractYamlField(content, "description"),
-          targetPath = targetDir / skillName,
-          size = getDirectorySize(repoDir),
-        ))
-      else
+        } else {
+          val frontmatterName = Yaml.extractYamlField(content, "name")
+          val skillName       =
+            if frontmatterName.nonEmpty then frontmatterName
+            else repoName.getOrElse(repoDir.last)
+          List(
+            SkillInfo(
+              skillDir = repoDir,
+              skillName = skillName,
+              description = Yaml.extractYamlField(content, "description"),
+              targetPath = targetDir / skillName,
+              size = getDirectorySize(repoDir),
+            )
+          )
+        }
+      } else
         Nil
 
-    if skillInfos.isEmpty then
-      def findSkills(dir: os.Path): List[os.Path] =
-        os.list(dir).toList.flatMap { entry =>
-          if os.isDir(entry) then
-            if os.exists(entry / "SKILL.md") then List(entry)
-            else findSkills(entry)
-          else Nil
+    val skillInfos: List[SkillInfo] =
+      if rootSkillInfos.nonEmpty then rootSkillInfos
+      else {
+        def findSkills(dir: os.Path): List[os.Path] =
+          os.list(dir).toList.flatMap { entry =>
+            if os.isDir(entry) then {
+              if os.exists(entry / "SKILL.md") then List(entry)
+              else findSkills(entry)
+            } else Nil
+          }
+
+        val skillDirs = findSkills(repoDir)
+
+        if skillDirs.isEmpty then {
+          System.err.println("Error: No SKILL.md files found in repository".red)
+          sys.exit(1)
+        } else {
+          val fromDirs = skillDirs.flatMap { skillDir =>
+            val skillMdPath = skillDir / "SKILL.md"
+            val content     = os.read(skillMdPath)
+
+            if !Yaml.hasValidFrontmatter(content) then None
+            else {
+              val skillName   = skillDir.last
+              val description = Yaml.extractYamlField(content, "description")
+              val targetPath  = targetDir / skillName
+              val size        = getDirectorySize(skillDir)
+              Some(SkillInfo(skillDir, skillName, description, targetPath, size))
+            }
+          }
+
+          if fromDirs.isEmpty then {
+            System.err.println("Error: No valid SKILL.md files found".red)
+            sys.exit(1)
+          } else
+            fromDirs
         }
-
-      val skillDirs = findSkills(repoDir)
-
-      if skillDirs.isEmpty then
-        System.err.println("Error: No SKILL.md files found in repository".red)
-        sys.exit(1)
-
-      skillInfos = skillDirs.flatMap { skillDir =>
-        val skillMdPath = skillDir / "SKILL.md"
-        val content = os.read(skillMdPath)
-
-        if !Yaml.hasValidFrontmatter(content) then None
-        else
-          val skillName = skillDir.last
-          val description = Yaml.extractYamlField(content, "description")
-          val targetPath = targetDir / skillName
-          val size = getDirectorySize(skillDir)
-          Some(SkillInfo(skillDir, skillName, description, targetPath, size))
       }
-
-      if skillInfos.isEmpty then
-        System.err.println("Error: No valid SKILL.md files found".red)
-        sys.exit(1)
 
     println(s"Found ${skillInfos.length} skill(s)\n".dim)
 
-    var skillsToInstall = skillInfos
+    val skillsToInstall: List[SkillInfo] =
+      if !options.yes && skillInfos.length > 1 then {
+        val labels = skillInfos.map { info =>
+          s"${info.skillName.padTo(25, ' ').bold} ${formatSize(info.size).dim}"
+        }
 
-    if !options.yes && skillInfos.length > 1 then
-      val labels = skillInfos.map { info =>
-        s"${info.skillName.padTo(25, ' ').bold} ${formatSize(info.size).dim}"
+        Prompts.sync.use { prompts =>
+          prompts.multiChoiceAllSelected("Select skills to install", labels) match {
+            case Completion.Finished(selectedLabels) =>
+              if selectedLabels.isEmpty then {
+                println("No skills selected. Installation cancelled.".yellow)
+                Nil
+              } else
+                skillInfos.filter { info =>
+                  selectedLabels.exists(_.contains(info.skillName))
+                }
+
+            case Completion.Fail(CompletionError.Interrupted) =>
+              println("\n\nCancelled by user".yellow)
+              sys.exit(0)
+
+            case Completion.Fail(CompletionError.Error(msg)) =>
+              System.err.println(s"Error: $msg")
+              sys.exit(1)
+          }
+        }
+      } else
+        skillInfos
+
+    if skillsToInstall.nonEmpty then {
+      val isProject = targetDir.startsWith(os.pwd)
+
+      val installedCount = skillsToInstall.count { info =>
+        if warnIfConflict(info.skillName, info.targetPath, isProject, options.yes) then {
+          os.makeDir.all(targetDir)
+          if !isPathInside(info.targetPath, targetDir) then {
+            System.err.println("Security error: Installation path outside target directory".red)
+            false
+          } else {
+            os.copy(info.skillDir, info.targetPath, replaceExisting = true)
+            SkillMetadata.writeSkillMetadata(
+              info.targetPath,
+              buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
+            )
+            println(s"\u2705 Installed: ${info.skillName}".green)
+            true
+          }
+        } else {
+          println(s"Skipped: ${info.skillName}".yellow)
+          false
+        }
       }
 
-      val cancelled = Prompts.sync.use { prompts =>
-        prompts.multiChoiceAllSelected("Select skills to install", labels) match
-          case Completion.Finished(selectedLabels) =>
-            if selectedLabels.isEmpty then
-              println("No skills selected. Installation cancelled.".yellow)
-              true
-            else
-              skillsToInstall = skillInfos.filter { info =>
-                selectedLabels.exists(_.contains(info.skillName))
-              }
-              false
-
-          case Completion.Fail(CompletionError.Interrupted) =>
-            println("\n\nCancelled by user".yellow)
-            sys.exit(0)
-
-          case Completion.Fail(CompletionError.Error(msg)) =>
-            System.err.println(s"Error: $msg")
-            sys.exit(1)
-      }
-      if cancelled then return
-
-    val isProject = targetDir.startsWith(os.pwd)
-    var installedCount = 0
-
-    for info <- skillsToInstall do
-      if warnIfConflict(info.skillName, info.targetPath, isProject, options.yes) then
-        os.makeDir.all(targetDir)
-        if !isPathInside(info.targetPath, targetDir) then
-          System.err.println("Security error: Installation path outside target directory".red)
-        else
-          os.copy(info.skillDir, info.targetPath, replaceExisting = true)
-          SkillMetadata.writeSkillMetadata(
-            info.targetPath,
-            buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
-          )
-          println(s"\u2705 Installed: ${info.skillName}".green)
-          installedCount += 1
-      else
-        println(s"Skipped: ${info.skillName}".yellow)
-
-    println(s"\n\u2705 Installation complete: $installedCount skill(s) installed".green)
+      println(s"\n\u2705 Installation complete: $installedCount skill(s) installed".green)
+    } else ()
+  }
 
   private def buildMetadataFromSource(
     sourceInfo: InstallSourceInfo,
     skillDir: os.Path,
     repoDir: os.Path,
   ): SkillSourceMetadata =
-    if sourceInfo.sourceType == SkillSourceType.Local then
-      buildLocalMetadata(sourceInfo, skillDir)
-    else
-      val subpath = skillDir.relativeTo(repoDir).toString
+    if sourceInfo.sourceType == SkillSourceType.Local then buildLocalMetadata(sourceInfo, skillDir)
+    else {
+      val subpath           = skillDir.relativeTo(repoDir).toString
       val normalizedSubpath = if subpath == "." then "" else subpath
       buildGitMetadata(sourceInfo, normalizedSubpath)
+    }
 
   private def buildGitMetadata(sourceInfo: InstallSourceInfo, subpath: String): SkillSourceMetadata =
     SkillSourceMetadata(
@@ -425,29 +472,36 @@ object Install:
     targetPath: os.Path,
     isProject: Boolean,
     skipPrompt: Boolean,
-  ): Boolean =
-    if os.exists(targetPath) then
-      if skipPrompt then
+  ): Boolean = {
+    if os.exists(targetPath) then {
+      if skipPrompt then {
         println(s"Overwriting: $skillName (all existing files and folders will be removed)".dim)
         os.remove.all(targetPath)
         true
-      else
-        println(s"\u26a0 All existing files and folders in '$skillName' will be removed if you choose to overwrite.".yellow)
+      } else
         Prompts.sync.use { prompts =>
-          prompts.confirm(s"Skill '$skillName' already exists. Overwrite?".yellow, default = false) match
+          println(
+            s"\u26a0 All existing files and folders in '$skillName' will be removed if you choose to overwrite.".yellow
+          )
+          prompts.confirm(s"Skill '$skillName' already exists. Overwrite?".yellow, default = false) match {
             case Completion.Finished(shouldOverwrite) =>
-              if shouldOverwrite then os.remove.all(targetPath)
+              if shouldOverwrite then os.remove.all(targetPath) else ()
               shouldOverwrite
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
               sys.exit(0)
             case Completion.Fail(CompletionError.Error(_)) =>
               false
+          }
         }
-    else
-      if !isProject && MarketplaceSkills.anthropicMarketplaceSkills.contains(skillName) then
+    } else {
+      if !isProject && MarketplaceSkills.anthropicMarketplaceSkills.contains(skillName) then {
         System.err.println(s"\n\u26a0\ufe0f  Warning: '$skillName' matches an Anthropic marketplace skill".yellow)
         System.err.println("   Installing globally may conflict with Claude Code plugins.".dim)
         System.err.println("   If you re-enable Claude plugins, this will be overwritten.".dim)
         System.err.println("   Recommend: Use --project flag for conflict-free installation.\n".dim)
+      } else ()
       true
+    }
+  }
+}

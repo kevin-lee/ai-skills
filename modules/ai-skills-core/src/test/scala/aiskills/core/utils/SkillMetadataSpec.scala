@@ -4,7 +4,7 @@ import aiskills.core.{SkillSourceMetadata, SkillSourceType}
 import hedgehog.*
 import hedgehog.runner.*
 
-object SkillMetadataSpec extends Properties:
+object SkillMetadataSpec extends Properties {
 
   override def tests: List[Test] = List(
     example("writes and reads metadata", testWriteAndRead),
@@ -12,10 +12,11 @@ object SkillMetadataSpec extends Properties:
     example("returns None for invalid JSON", testInvalidJson),
   )
 
-  private def withTempDir[A](f: os.Path => A): A =
+  private def withTempDir[A](f: os.Path => A): A = {
     val tempDir = os.temp.dir(prefix = "aiskills-metadata-test-")
     try f(tempDir)
     finally os.remove.all(tempDir)
+  }
 
   private def testWriteAndRead: Result =
     withTempDir { tempDir =>
@@ -30,14 +31,19 @@ object SkillMetadataSpec extends Properties:
       SkillMetadata.writeSkillMetadata(tempDir, payload)
       val read = SkillMetadata.readSkillMetadata(tempDir)
 
-      Result.all(List(
-        Result.assert(read.isDefined),
-        read.get.source ==== payload.source,
-        read.get.sourceType ==== payload.sourceType,
-        read.get.repoUrl ==== payload.repoUrl,
-        read.get.subpath ==== payload.subpath,
-        read.get.installedAt ==== payload.installedAt,
-      ))
+      read match {
+        case Some(r) =>
+          Result.all(
+            List(
+              r.source ==== payload.source,
+              r.sourceType ==== payload.sourceType,
+              r.repoUrl ==== payload.repoUrl,
+              r.subpath ==== payload.subpath,
+              r.installedAt ==== payload.installedAt,
+            )
+          )
+        case None => Result.failure.log("Expected Some but got None")
+      }
     }
 
   private def testMissing: Result =
@@ -50,3 +56,4 @@ object SkillMetadataSpec extends Properties:
       os.write(tempDir / SkillMetadata.SkillMetadataFile, "{not-json")
       Result.assert(SkillMetadata.readSkillMetadata(tempDir).isEmpty)
     }
+}

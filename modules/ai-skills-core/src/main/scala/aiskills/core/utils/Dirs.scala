@@ -2,44 +2,44 @@ package aiskills.core.utils
 
 import aiskills.core.{Agent, SkillLocation}
 
-object Dirs:
+object Dirs {
 
   /** Get skills directory path for a specific agent. */
   def getSkillsDir(agent: Agent, global: Boolean = false): os.Path =
     if global then os.home / os.RelPath(agent.globalDirName) / "skills"
     else os.pwd / os.RelPath(agent.projectDirName) / "skills"
 
-  /**
-   * Get all searchable skill directories in priority order.
-   * Priority:
-   *   1. Project universal (.agents)
-   *   2. Project agent-specific (alphabetical by agent name)
-   *   3. Global universal (~/.agents)
-   *   4. Global agent-specific (alphabetical by agent name)
-   */
-  def getSearchDirs(): List[(os.Path, Agent, SkillLocation)] =
+  /** Get all searchable skill directories in priority order.
+    * Priority:
+    *   1. Project universal (.agents)
+    *   2. Project agent-specific (alphabetical by agent name)
+    *   3. Global universal (~/.agents)
+    *   4. Global agent-specific (alphabetical by agent name)
+    */
+  def getSearchDirs(): List[(os.Path, Agent, SkillLocation)] = {
     val agentsSorted = Agent.allNonUniversal.sortBy(_.toString)
 
     val projectUniversal = List(
       (os.pwd / os.RelPath(Agent.Universal.projectDirName) / "skills", Agent.Universal, SkillLocation.Project)
     )
-    val projectSpecific = agentsSorted.map(a =>
-      (os.pwd / os.RelPath(a.projectDirName) / "skills", a, SkillLocation.Project)
-    )
-    val globalUniversal = List(
+    val projectSpecific  =
+      agentsSorted.map(a => (os.pwd / os.RelPath(a.projectDirName) / "skills", a, SkillLocation.Project))
+    val globalUniversal  = List(
       (os.home / os.RelPath(Agent.Universal.globalDirName) / "skills", Agent.Universal, SkillLocation.Global)
     )
-    val globalSpecific = agentsSorted.map(a =>
-      (os.home / os.RelPath(a.globalDirName) / "skills", a, SkillLocation.Global)
-    )
+    val globalSpecific   =
+      agentsSorted.map(a => (os.home / os.RelPath(a.globalDirName) / "skills", a, SkillLocation.Global))
 
     projectUniversal ++ projectSpecific ++ globalUniversal ++ globalSpecific
+  }
 
   /** Get search dirs with a preferred agent's directories bumped to the front. */
   def getSearchDirs(prefer: Option[Agent]): List[(os.Path, Agent, SkillLocation)] =
-    prefer match
-      case None            => getSearchDirs()
+    prefer match {
+      case None => getSearchDirs()
       case Some(preferred) =>
-        val all = getSearchDirs()
+        val all                   = getSearchDirs()
         val (preferredDirs, rest) = all.partition(_._2 == preferred)
         preferredDirs ++ rest
+    }
+}
