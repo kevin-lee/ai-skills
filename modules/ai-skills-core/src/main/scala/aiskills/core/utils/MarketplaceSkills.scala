@@ -1,6 +1,6 @@
 package aiskills.core.utils
 
-object MarketplaceSkills:
+object MarketplaceSkills {
 
   /** Known skills from Anthropic's marketplace. Used to warn about potential conflicts. */
   val anthropicMarketplaceSkills: Set[String] = Set(
@@ -22,3 +22,4 @@ object MarketplaceSkills:
     "theme-factory",
     "webapp-testing",
   )
+}

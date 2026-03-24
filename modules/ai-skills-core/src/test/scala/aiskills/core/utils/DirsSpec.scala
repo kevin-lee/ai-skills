@@ -4,7 +4,7 @@ import aiskills.core.{Agent, SkillLocation}
 import hedgehog.*
 import hedgehog.runner.*
 
-object DirsSpec extends Properties:
+object DirsSpec extends Properties {
 
   override def tests: List[Test] = List(
     example("getSkillsDir: project Universal uses .agents", testProjectUniversal),
@@ -50,59 +50,71 @@ object DirsSpec extends Properties:
   private def testProjectGemini: Result =
     Dirs.getSkillsDir(Agent.Gemini) ==== (os.pwd / ".gemini" / "skills")
 
-  private def testSearchDirsCount: Result =
+  private def testSearchDirsCount: Result = {
     val dirs = Dirs.getSearchDirs()
     dirs.length ==== 12
+  }
 
-  private def testSearchDirsOrder: Result =
+  private def testSearchDirsOrder: Result = {
     val dirs = Dirs.getSearchDirs()
     // 1. Project universal
     // 2-6. Project agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini)
     // 7. Global universal
     // 8-12. Global agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini)
-    Result.all(List(
-      // Project universal
-      dirs(0) ==== ((os.pwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project)),
-      // Project agent-specific (alphabetical)
-      dirs(1)._2 ==== Agent.Claude,
-      dirs(2)._2 ==== Agent.Codex,
-      dirs(3)._2 ==== Agent.Copilot,
-      dirs(4)._2 ==== Agent.Cursor,
-      dirs(5)._2 ==== Agent.Gemini,
-      // All project dirs are Project location
-      Result.assert(dirs.take(6).forall(_._3 == SkillLocation.Project)),
-      // Global universal
-      dirs(6) ==== ((os.home / ".agents" / "skills", Agent.Universal, SkillLocation.Global)),
-      // Global agent-specific (alphabetical)
-      dirs(7)._2 ==== Agent.Claude,
-      dirs(8)._2 ==== Agent.Codex,
-      dirs(9)._2 ==== Agent.Copilot,
-      dirs(10)._2 ==== Agent.Cursor,
-      dirs(11)._2 ==== Agent.Gemini,
-      // All global dirs are Global location
-      Result.assert(dirs.drop(6).forall(_._3 == SkillLocation.Global)),
-    ))
+    Result.all(
+      List(
+        // Project universal
+        dirs(0) ==== ((os.pwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project)),
+        // Project agent-specific (alphabetical)
+        dirs(1)._2 ==== Agent.Claude,
+        dirs(2)._2 ==== Agent.Codex,
+        dirs(3)._2 ==== Agent.Copilot,
+        dirs(4)._2 ==== Agent.Cursor,
+        dirs(5)._2 ==== Agent.Gemini,
+        // All project dirs are Project location
+        Result.assert(dirs.take(6).forall(_._3 == SkillLocation.Project)),
+        // Global universal
+        dirs(6) ==== ((os.home / ".agents" / "skills", Agent.Universal, SkillLocation.Global)),
+        // Global agent-specific (alphabetical)
+        dirs(7)._2 ==== Agent.Claude,
+        dirs(8)._2 ==== Agent.Codex,
+        dirs(9)._2 ==== Agent.Copilot,
+        dirs(10)._2 ==== Agent.Cursor,
+        dirs(11)._2 ==== Agent.Gemini,
+        // All global dirs are Global location
+        Result.assert(dirs.drop(6).forall(_._3 == SkillLocation.Global)),
+      )
+    )
+  }
 
-  private def testSearchDirsFirst: Result =
-    val dirs = Dirs.getSearchDirs()
+  private def testSearchDirsFirst: Result = {
+    val dirs                    = Dirs.getSearchDirs()
     val (path, agent, location) = dirs.head
-    Result.all(List(
-      path ==== (os.pwd / ".agents" / "skills"),
-      agent ==== Agent.Universal,
-      location ==== SkillLocation.Project,
-    ))
+    Result.all(
+      List(
+        path ==== (os.pwd / ".agents" / "skills"),
+        agent ==== Agent.Universal,
+        location ==== SkillLocation.Project,
+      )
+    )
+  }
 
-  private def testSearchDirsPrefer: Result =
-    val dirs = Dirs.getSearchDirs(Some(Agent.Cursor))
+  private def testSearchDirsPrefer: Result = {
+    val dirs                       = Dirs.getSearchDirs(Some(Agent.Cursor))
     // Cursor dirs should be first
     val (firstPath, firstAgent, _) = dirs.head
-    Result.all(List(
-      firstAgent ==== Agent.Cursor,
-      // Should still have 12 dirs
-      dirs.length ==== 12,
-    ))
+    Result.all(
+      List(
+        firstAgent ==== Agent.Cursor,
+        // Should still have 12 dirs
+        dirs.length ==== 12,
+      )
+    )
+  }
 
-  private def testSearchDirsPreferNone: Result =
-    val defaultDirs = Dirs.getSearchDirs()
+  private def testSearchDirsPreferNone: Result = {
+    val defaultDirs    = Dirs.getSearchDirs()
     val preferNoneDirs = Dirs.getSearchDirs(None)
     defaultDirs ==== preferNoneDirs
+  }
+}

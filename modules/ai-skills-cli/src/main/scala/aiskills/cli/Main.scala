@@ -68,9 +68,9 @@ object Main {
           |  aiskills install ~/my-skills/my-skill                  # Install from home-relative path
           |""".stripMargin,
       ) {
-        val source = Opts.argument[String](metavar = "source")
-        val global = Opts.flag("global", "Install globally (default: project install)", short = "g").orFalse
-        val agent = Opts
+        val source    = Opts.argument[String](metavar = "source")
+        val global    = Opts.flag("global", "Install globally (default: project install)", short = "g").orFalse
+        val agent     = Opts
           .option[String](
             "agent",
             s"Target agent (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
@@ -78,16 +78,19 @@ object Main {
           )
           .withDefault("universal")
         val allAgents = Opts.flag("all-agents", "Install to all agent directories").orFalse
-        val yes = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
+        val yes       = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
         (source, global, agent, allAgents, yes).mapN { (src, g, a, all, y) =>
-          Agent.fromString(a) match
+          Agent.fromString(a) match {
             case Some(agentEnum) =>
               Install.installSkill(src, InstallOptions(global = g, agent = agentEnum, allAgents = all, yes = y))
             case None =>
-              System.err.println(
-                s"Error: Invalid agent '$a'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
-              )
+              System
+                .err
+                .println(
+                  s"Error: Invalid agent '$a'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                )
               sys.exit(1)
+          }
         }
       }
 
@@ -106,7 +109,7 @@ object Main {
           |  aiskills read commit --prefer cursor          # Prefer Cursor's version
           |""".stripMargin,
       ) {
-        val names = Opts.arguments[String](metavar = "skill-names")
+        val names  = Opts.arguments[String](metavar = "skill-names")
         val prefer = Opts.option[String]("prefer", "Prefer skills from this agent's directory").orNone
         (names, prefer).mapN { (ns, p) =>
           val preferAgent = p.flatMap(Agent.fromString)
@@ -155,20 +158,22 @@ object Main {
             |""".stripMargin,
         ) {
           val skillName = Opts.argument[String](metavar = "skill-name").orNone
-          val from = Opts.option[String]("from", "Source agent").orNone
-          val to = Opts.option[String]("to", "Target agent").orNone
+          val from      = Opts.option[String]("from", "Source agent").orNone
+          val to        = Opts.option[String]("to", "Target agent").orNone
           val allAgents = Opts.flag("all-agents", "Sync to all other agent directories").orFalse
-          val yes = Opts.flag("yes", "Skip confirmation", short = "y").orFalse
+          val yes       = Opts.flag("yes", "Skip confirmation", short = "y").orFalse
           (skillName, from, to, allAgents, yes).mapN { (sn, f, t, all, y) =>
             val fromAgent = f.flatMap(Agent.fromString)
-            val toAgent = t.flatMap(Agent.fromString)
-            Sync.syncSkills(SyncOptions(
-              skillName = sn,
-              from = fromAgent,
-              to = toAgent,
-              allAgents = all,
-              yes = y,
-            ))
+            val toAgent   = t.flatMap(Agent.fromString)
+            Sync.syncSkills(
+              SyncOptions(
+                skillName = sn,
+                from = fromAgent,
+                to = toAgent,
+                allAgents = all,
+                yes = y,
+              )
+            )
           }
         }
 

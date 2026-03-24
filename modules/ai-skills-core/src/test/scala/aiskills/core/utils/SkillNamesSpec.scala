@@ -3,7 +3,7 @@ package aiskills.core.utils
 import hedgehog.*
 import hedgehog.runner.*
 
-object SkillNamesSpec extends Properties:
+object SkillNamesSpec extends Properties {
 
   override def tests: List[Test] = List(
     example("splits comma-separated names", testSplitComma),
@@ -27,3 +27,4 @@ object SkillNamesSpec extends Properties:
 
   private def testEmpty: Result =
     SkillNames.normalizeSkillNames(List.empty) ==== List.empty
+}

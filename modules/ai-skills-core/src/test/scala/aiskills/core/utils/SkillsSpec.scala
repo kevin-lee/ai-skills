@@ -3,7 +3,7 @@ package aiskills.core.utils
 import hedgehog.*
 import hedgehog.runner.*
 
-object SkillsSpec extends Properties:
+object SkillsSpec extends Properties {
 
   override def tests: List[Test] = List(
     example("findAllSkills: finds regular directory skills", testFindRegular),
@@ -21,10 +21,10 @@ object SkillsSpec extends Properties:
     example("findSkill: returns first match in priority order", testFindPriority),
   )
 
-  private def withTestDirs[A](f: (os.Path, os.Path) => A): A =
-    val testRoot = os.temp.dir(prefix = "aiskills-test-")
+  private def withTestDirs[A](f: (os.Path, os.Path) => A): A = {
+    val testRoot      = os.temp.dir(prefix = "aiskills-test-")
     val projectSkills = testRoot / "project" / ".claude" / "skills"
-    val globalSkills = testRoot / "global" / ".claude" / "skills"
+    val globalSkills  = testRoot / "global" / ".claude" / "skills"
     os.makeDir.all(projectSkills)
     os.makeDir.all(globalSkills)
 
@@ -34,10 +34,13 @@ object SkillsSpec extends Properties:
     // For unit testing, we test the helper functions directly
     try f(projectSkills, globalSkills)
     finally os.remove.all(testRoot)
+  }
 
   private def createSkill(
-    baseDir: os.Path, skillName: String, description: String //= "Test skill"
-  ): Unit =
+    baseDir: os.Path,
+    skillName: String,
+    description: String // = "Test skill"
+  ): Unit = {
     val skillDir = baseDir / skillName
     os.makeDir.all(skillDir)
     os.write(
@@ -51,13 +54,14 @@ object SkillsSpec extends Properties:
          |
          |This is a test skill.""".stripMargin,
     )
+  }
 
   private def createSymlinkedSkill(
     skillsDir: os.Path,
     targetDir: os.Path,
     skillName: String,
-    description: String //= "Symlinked test skill",
-  ): Unit =
+    description: String // = "Symlinked test skill",
+  ): Unit = {
     val actualSkillDir = targetDir / skillName
     os.makeDir.all(actualSkillDir)
     os.write(
@@ -72,6 +76,7 @@ object SkillsSpec extends Properties:
          |This is a symlinked test skill.""".stripMargin,
     )
     os.symlink(skillsDir / skillName, actualSkillDir)
+  }
 
   // Note: These tests exercise the skill creation/reading logic directly
   // since we cannot easily mock getSearchDirs without DI.
@@ -81,8 +86,8 @@ object SkillsSpec extends Properties:
     withTestDirs { (projectSkills, _) =>
       createSkill(projectSkills, "regular-skill", "A regular skill")
       val skillPath = projectSkills / "regular-skill" / "SKILL.md"
-      val content = os.read(skillPath)
-      val desc = Yaml.extractYamlField(content, "description")
+      val content   = os.read(skillPath)
+      val desc      = Yaml.extractYamlField(content, "description")
       desc ==== "A regular skill"
     }
 
@@ -92,10 +97,12 @@ object SkillsSpec extends Properties:
       os.makeDir.all(targetDir)
       createSymlinkedSkill(globalSkills, targetDir, "symlinked-skill", "A symlinked skill")
       val skillPath = globalSkills / "symlinked-skill" / "SKILL.md"
-      Result.all(List(
-        Result.assert(os.exists(skillPath)),
-        Yaml.extractYamlField(os.read(skillPath), "description") ==== "A symlinked skill",
-      ))
+      Result.all(
+        List(
+          Result.assert(os.exists(skillPath)),
+          Yaml.extractYamlField(os.read(skillPath), "description") ==== "A symlinked skill",
+        )
+      )
     }
 
   private def testFindBoth: Result =
@@ -104,10 +111,12 @@ object SkillsSpec extends Properties:
       val targetDir = globalSkills / os.up / "symlink-targets"
       os.makeDir.all(targetDir)
       createSymlinkedSkill(globalSkills, targetDir, "symlinked-skill", "Symlinked")
-      Result.all(List(
-        Result.assert(os.exists(projectSkills / "regular-skill" / "SKILL.md")),
-        Result.assert(os.exists(globalSkills / "symlinked-skill" / "SKILL.md")),
-      ))
+      Result.all(
+        List(
+          Result.assert(os.exists(projectSkills / "regular-skill" / "SKILL.md")),
+          Result.assert(os.exists(globalSkills / "symlinked-skill" / "SKILL.md")),
+        )
+      )
     }
 
   private def testBrokenSymlink: Result =
@@ -124,11 +133,13 @@ object SkillsSpec extends Properties:
       createSkill(globalSkills, "duplicate-skill", "Global version")
       // Both should exist independently
       val projectContent = os.read(projectSkills / "duplicate-skill" / "SKILL.md")
-      val globalContent = os.read(globalSkills / "duplicate-skill" / "SKILL.md")
-      Result.all(List(
-        Yaml.extractYamlField(projectContent, "description") ==== "Project version",
-        Yaml.extractYamlField(globalContent, "description") ==== "Global version",
-      ))
+      val globalContent  = os.read(globalSkills / "duplicate-skill" / "SKILL.md")
+      Result.all(
+        List(
+          Yaml.extractYamlField(projectContent, "description") ==== "Project version",
+          Yaml.extractYamlField(globalContent, "description") ==== "Global version",
+        )
+      )
     }
 
   private def testNoSkillMd: Result =
@@ -143,10 +154,12 @@ object SkillsSpec extends Properties:
     withTestDirs { (projectSkills, _) =>
       os.write(projectSkills / "file.txt", "Just a file")
       createSkill(projectSkills, "actual-skill", "Real skill")
-      Result.all(List(
-        Result.assert(!os.isDir(projectSkills / "file.txt")),
-        Result.assert(os.exists(projectSkills / "actual-skill" / "SKILL.md")),
-      ))
+      Result.all(
+        List(
+          Result.assert(!os.isDir(projectSkills / "file.txt")),
+          Result.assert(os.exists(projectSkills / "actual-skill" / "SKILL.md")),
+        )
+      )
     }
 
   private def testEmpty: Result =
@@ -161,10 +174,12 @@ object SkillsSpec extends Properties:
     withTestDirs { (projectSkills, _) =>
       createSkill(projectSkills, "my-skill", "My skill description")
       val skillPath = projectSkills / "my-skill" / "SKILL.md"
-      Result.all(List(
-        Result.assert(os.exists(skillPath)),
-        Result.assert(skillPath.toString.contains("my-skill/SKILL.md")),
-      ))
+      Result.all(
+        List(
+          Result.assert(os.exists(skillPath)),
+          Result.assert(skillPath.toString.contains("my-skill/SKILL.md")),
+        )
+      )
     }
 
   private def testFindSymlinkedByName: Result =
@@ -189,3 +204,4 @@ object SkillsSpec extends Properties:
       val projectContent = os.read(projectSkills / "shared-skill" / "SKILL.md")
       Yaml.extractYamlField(projectContent, "description") ==== "Project"
     }
+}

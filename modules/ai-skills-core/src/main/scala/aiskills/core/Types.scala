@@ -1,17 +1,19 @@
 package aiskills.core
 
+import cats.syntax.either.*
 import io.circe.generic.semiauto.*
 import io.circe.{Decoder, Encoder}
 
-enum Agent(val projectDirName: String, val globalDirName: String):
+enum Agent(val projectDirName: String, val globalDirName: String) {
   case Universal extends Agent(".agents", ".agents")
-  case Claude    extends Agent(".claude", ".claude")
-  case Cursor    extends Agent(".cursor", ".cursor")
-  case Codex     extends Agent(".codex", ".codex")
-  case Gemini    extends Agent(".gemini", ".gemini")
-  case Copilot   extends Agent(".github", ".copilot")
+  case Claude extends Agent(".claude", ".claude")
+  case Cursor extends Agent(".cursor", ".cursor")
+  case Codex extends Agent(".codex", ".codex")
+  case Gemini extends Agent(".gemini", ".gemini")
+  case Copilot extends Agent(".github", ".copilot")
+}
 
-object Agent:
+object Agent {
   val all: List[Agent] = Agent.values.toList
 
   val allNonUniversal: List[Agent] = all.filterNot(_ == Agent.Universal)
@@ -20,30 +22,34 @@ object Agent:
     all.find(_.toString.equalsIgnoreCase(s))
 
   def needsAgentsMd(agent: Agent): Boolean =
-    agent match
+    agent match {
       case Agent.Universal | Agent.Codex => true
-      case _                             => false
+      case _ => false
+    }
 
   given Encoder[Agent] = Encoder.encodeString.contramap(_.toString.toLowerCase)
 
   given Decoder[Agent] = Decoder.decodeString.emap { s =>
     fromString(s).toRight(s"Invalid Agent: $s. Valid agents: ${all.map(_.toString.toLowerCase).mkString(", ")}")
   }
+}
 
-enum SkillLocation:
+enum SkillLocation {
   case Project, Global
+}
 
-object SkillLocation:
+object SkillLocation {
   given Encoder[SkillLocation] = Encoder.encodeString.contramap {
     case SkillLocation.Project => "project"
-    case SkillLocation.Global  => "global"
+    case SkillLocation.Global => "global"
   }
 
   given Decoder[SkillLocation] = Decoder.decodeString.emap {
-    case "project" => Right(SkillLocation.Project)
-    case "global"  => Right(SkillLocation.Global)
-    case other     => Left(s"Invalid SkillLocation: $other")
+    case "project" => SkillLocation.Project.asRight
+    case "global" => SkillLocation.Global.asRight
+    case other => s"Invalid SkillLocation: $other".asLeft
   }
+}
 
 final case class Skill(
   name: String,
@@ -78,22 +84,24 @@ final case class SkillMetadata(
   context: Option[String] = None,
 )
 
-enum SkillSourceType:
+enum SkillSourceType {
   case Git, GitHub, Local
+}
 
-object SkillSourceType:
+object SkillSourceType {
   given Encoder[SkillSourceType] = Encoder.encodeString.contramap {
-    case SkillSourceType.Git    => "git"
+    case SkillSourceType.Git => "git"
     case SkillSourceType.GitHub => "github"
-    case SkillSourceType.Local  => "local"
+    case SkillSourceType.Local => "local"
   }
 
   given Decoder[SkillSourceType] = Decoder.decodeString.emap {
-    case "git"    => Right(SkillSourceType.Git)
-    case "github" => Right(SkillSourceType.GitHub)
-    case "local"  => Right(SkillSourceType.Local)
-    case other    => Left(s"Invalid SkillSourceType: $other")
+    case "git" => SkillSourceType.Git.asRight
+    case "github" => SkillSourceType.GitHub.asRight
+    case "local" => SkillSourceType.Local.asRight
+    case other => s"Invalid SkillSourceType: $other".asLeft
   }
+}
 
 final case class SkillSourceMetadata(
   source: String,
@@ -104,41 +112,40 @@ final case class SkillSourceMetadata(
   installedAt: String,
 )
 
-object SkillSourceMetadata:
+object SkillSourceMetadata {
   given Encoder[SkillSourceMetadata] = deriveEncoder[SkillSourceMetadata]
   given Decoder[SkillSourceMetadata] = deriveDecoder[SkillSourceMetadata]
+}
 
-sealed trait AiSkillsError:
-  def message: String
+sealed trait AiSkillsError
 
-object AiSkillsError:
-  final case class SkillNotFound(name: String) extends AiSkillsError:
-    def message: String = s"Skill '$name' not found"
+object AiSkillsError {
+  final case class SkillNotFound(name: String) extends AiSkillsError
+  final case class GitCloneError(url: String, detail: String) extends AiSkillsError
+  final case class MetadataParseError(path: os.Path, detail: String) extends AiSkillsError
+  final case class InvalidFrontmatter(path: os.Path) extends AiSkillsError
+  final case class InvalidSource(source: String) extends AiSkillsError
+  final case class PathTraversalError(target: os.Path, parent: os.Path) extends AiSkillsError
+  final case class InvalidOutputPath(path: String) extends AiSkillsError
+  final case class IoError(detail: String) extends AiSkillsError
+  final case class InvalidAgent(name: String) extends AiSkillsError
 
-  final case class GitCloneError(url: String, detail: String) extends AiSkillsError:
-    def message: String = s"Failed to clone repository: $url ($detail)"
-
-  final case class MetadataParseError(path: os.Path, detail: String) extends AiSkillsError:
-    def message: String = s"Failed to parse metadata at $path: $detail"
-
-  final case class InvalidFrontmatter(path: os.Path) extends AiSkillsError:
-    def message: String = s"Invalid SKILL.md (missing YAML frontmatter) at $path"
-
-  final case class InvalidSource(source: String) extends AiSkillsError:
-    def message: String = s"Invalid source format: $source"
-
-  final case class PathTraversalError(target: os.Path, parent: os.Path) extends AiSkillsError:
-    def message: String = s"Security error: Installation path $target outside target directory $parent"
-
-  final case class InvalidOutputPath(path: String) extends AiSkillsError:
-    def message: String = s"Output file must be a markdown file (.md): $path"
-
-  final case class IoError(detail: String) extends AiSkillsError:
-    def message: String = s"I/O error: $detail"
-
-  final case class InvalidAgent(name: String) extends AiSkillsError:
-    def message: String =
-      s"Invalid agent: '$name'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+  extension (error: AiSkillsError) {
+    def message: String = error match {
+      case SkillNotFound(name) => s"Skill '$name' not found"
+      case GitCloneError(url, detail) => s"Failed to clone repository: $url ($detail)"
+      case MetadataParseError(path, detail) => s"Failed to parse metadata at $path: $detail"
+      case InvalidFrontmatter(path) => s"Invalid SKILL.md (missing YAML frontmatter) at $path"
+      case InvalidSource(source) => s"Invalid source format: $source"
+      case PathTraversalError(target, parent) =>
+        s"Security error: Installation path $target outside target directory $parent"
+      case InvalidOutputPath(path) => s"Output file must be a markdown file (.md): $path"
+      case IoError(detail) => s"I/O error: $detail"
+      case InvalidAgent(name) =>
+        s"Invalid agent: '$name'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+    }
+  }
+}
 
 final case class SyncOptions(
   skillName: Option[String] = None,

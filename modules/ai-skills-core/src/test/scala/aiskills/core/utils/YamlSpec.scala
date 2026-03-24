@@ -3,7 +3,7 @@ package aiskills.core.utils
 import hedgehog.*
 import hedgehog.runner.*
 
-object YamlSpec extends Properties:
+object YamlSpec extends Properties {
 
   override def tests: List[Test] = List(
     example("extractYamlField: should extract field from YAML frontmatter", testExtractField),
@@ -18,7 +18,7 @@ object YamlSpec extends Properties:
     example("hasValidFrontmatter: should return false for empty content", testEmptyContent),
   )
 
-  private def testExtractField: Result =
+  private def testExtractField: Result = {
     val content =
       """---
         |name: test-skill
@@ -27,20 +27,24 @@ object YamlSpec extends Properties:
         |
         |Content""".stripMargin
 
-    Result.all(List(
-      Yaml.extractYamlField(content, "name") ==== "test-skill",
-      Yaml.extractYamlField(content, "description") ==== "Test description",
-    ))
+    Result.all(
+      List(
+        Yaml.extractYamlField(content, "name") ==== "test-skill",
+        Yaml.extractYamlField(content, "description") ==== "Test description",
+      )
+    )
+  }
 
-  private def testMissingField: Result =
+  private def testMissingField: Result = {
     val content =
       """---
         |name: test-skill
         |---""".stripMargin
 
     Yaml.extractYamlField(content, "missing") ==== ""
+  }
 
-  private def testMultilineDesc: Result =
+  private def testMultilineDesc: Result = {
     val content =
       """---
         |name: test
@@ -48,8 +52,9 @@ object YamlSpec extends Properties:
         |---""".stripMargin
 
     Yaml.extractYamlField(content, "description") ==== "First line"
+  }
 
-  private def testNonGreedy: Result =
+  private def testNonGreedy: Result = {
     val content =
       """---
         |name: skill-name
@@ -58,20 +63,23 @@ object YamlSpec extends Properties:
         |---""".stripMargin
 
     val name = Yaml.extractYamlField(content, "name")
-    Result.all(List(
-      name ==== "skill-name",
-      Result.assert(!name.contains("description")),
-    ))
+    Result.all(
+      List(
+        name ==== "skill-name",
+        Result.assert(!name.contains("description")),
+      )
+    )
+  }
 
-  private def testReDoS: Result =
+  private def testReDoS: Result = {
     val content = s"---\nname: ${"a" * 1000}\n---"
-    val start = System.currentTimeMillis()
-    val _ = Yaml.extractYamlField(content, "name")
-//    println(s"name=$name")
+    val start   = System.currentTimeMillis()
+    val _       = Yaml.extractYamlField(content, "name")
     val elapsed = System.currentTimeMillis() - start
     Result.assert(elapsed < 100)
+  }
 
-  private def testSpecialChars: Result =
+  private def testSpecialChars: Result = {
     val content =
       """---
         |name: skill-with-special_chars.v2
@@ -79,8 +87,9 @@ object YamlSpec extends Properties:
         |---""".stripMargin
 
     Yaml.extractYamlField(content, "name") ==== "skill-with-special_chars.v2"
+  }
 
-  private def testColonsInValues: Result =
+  private def testColonsInValues: Result = {
     val content =
       """---
         |name: my-skill
@@ -89,8 +98,9 @@ object YamlSpec extends Properties:
 
     val desc = Yaml.extractYamlField(content, "description")
     Result.assert(desc.contains("URL:"))
+  }
 
-  private def testValidFrontmatter: Result =
+  private def testValidFrontmatter: Result = {
     val content =
       """---
         |name: test
@@ -99,9 +109,11 @@ object YamlSpec extends Properties:
         |Content""".stripMargin
 
     Result.assert(Yaml.hasValidFrontmatter(content))
+  }
 
   private def testMissingFrontmatter: Result =
     Result.assert(!Yaml.hasValidFrontmatter("No frontmatter here"))
 
   private def testEmptyContent: Result =
     Result.assert(!Yaml.hasValidFrontmatter(""))
+}
