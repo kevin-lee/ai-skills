@@ -24,31 +24,31 @@ object DirsSpec extends Properties {
   )
 
   private def testProjectUniversal: Result =
-    Dirs.getSkillsDir(Agent.Universal) ==== (os.pwd / ".agents" / "skills")
+    Dirs.getSkillsDir(Agent.Universal, global = false) ==== (os.pwd / ".agents" / "skills")
 
   private def testGlobalUniversal: Result =
     Dirs.getSkillsDir(Agent.Universal, global = true) ==== (os.home / ".agents" / "skills")
 
   private def testProjectClaude: Result =
-    Dirs.getSkillsDir(Agent.Claude) ==== (os.pwd / ".claude" / "skills")
+    Dirs.getSkillsDir(Agent.Claude, global = false) ==== (os.pwd / ".claude" / "skills")
 
   private def testGlobalClaude: Result =
     Dirs.getSkillsDir(Agent.Claude, global = true) ==== (os.home / ".claude" / "skills")
 
   private def testProjectCopilot: Result =
-    Dirs.getSkillsDir(Agent.Copilot) ==== (os.pwd / ".github" / "skills")
+    Dirs.getSkillsDir(Agent.Copilot, global = false) ==== (os.pwd / ".github" / "skills")
 
   private def testGlobalCopilot: Result =
     Dirs.getSkillsDir(Agent.Copilot, global = true) ==== (os.home / ".copilot" / "skills")
 
   private def testProjectCursor: Result =
-    Dirs.getSkillsDir(Agent.Cursor) ==== (os.pwd / ".cursor" / "skills")
+    Dirs.getSkillsDir(Agent.Cursor, global = false) ==== (os.pwd / ".cursor" / "skills")
 
   private def testProjectCodex: Result =
-    Dirs.getSkillsDir(Agent.Codex) ==== (os.pwd / ".codex" / "skills")
+    Dirs.getSkillsDir(Agent.Codex, global = false) ==== (os.pwd / ".codex" / "skills")
 
   private def testProjectGemini: Result =
-    Dirs.getSkillsDir(Agent.Gemini) ==== (os.pwd / ".gemini" / "skills")
+    Dirs.getSkillsDir(Agent.Gemini, global = false) ==== (os.pwd / ".gemini" / "skills")
 
   private def testSearchDirsCount: Result = {
     val dirs = Dirs.getSearchDirs()
