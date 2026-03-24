@@ -19,7 +19,7 @@ object Manage {
 
       val labels = sorted.map { skill =>
         val locationLabel = s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})"
-        s"${skill.name.padTo(25, ' ').bold} $locationLabel"
+        s"${skill.name.padTo(25, ' ')} $locationLabel"
       }
 
       Prompts.sync.use { prompts =>

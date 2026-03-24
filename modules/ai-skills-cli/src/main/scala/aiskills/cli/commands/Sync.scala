@@ -155,7 +155,7 @@ object Sync {
         // Step 1: Pick source agent
         val agentLabels = agents.map { a =>
           val count = grouped(a).length
-          s"${a.toString.padTo(15, ' ').bold} ($count skill(s))"
+          s"${a.toString.padTo(15, ' ')} ($count skill(s))"
         }
 
         val sourceAgent = Prompts.sync.use { prompts =>
