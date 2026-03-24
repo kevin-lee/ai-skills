@@ -6,8 +6,14 @@ ThisBuild / version := props.ProjectVersion
 
 lazy val aiSkills = project
   .in(file("."))
+  .enablePlugins(DevOopsGitHubReleasePlugin)
   .settings(
     name := props.ProjectName,
+    /* GitHub Release { */
+    devOopsPackagedArtifacts := List(
+      s"modules/${props.ProjectName}-cli/target/scala-*/${props.ProjectName.replace("-", "")}-*",
+    ),
+    /* } GitHub Release */
   )
   .settings(noPublish)
   .aggregate(core, cli)
