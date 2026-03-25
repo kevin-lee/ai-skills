@@ -61,66 +61,68 @@ object Install {
 
   /** Install skill from local path, GitHub, or Git URL. */
   def installSkill(source: String, options: InstallOptions): Unit = {
+    aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
     val agents    = if options.allAgents then Agent.all else List(options.agent)
     val isProject = !options.global
 
     // Resolve source once
     val resolvedSource = resolveSource(source)
 
-    for agent <- agents do {
-      val folder       = s"${agent.projectDirName}/skills"
-      val globalFolder = s"${agent.globalDirName}/skills"
-      val targetDir    =
-        if isProject then os.pwd / os.RelPath(folder)
-        else os.home / os.RelPath(globalFolder)
+    try {
+      for agent <- agents do {
+        val folder       = s"${agent.projectDirName}/skills"
+        val globalFolder = s"${agent.globalDirName}/skills"
+        val targetDir    =
+          if isProject then os.pwd / os.RelPath(folder)
+          else os.home / os.RelPath(globalFolder)
 
-      val location =
-        if isProject then s"project ($folder)".blue
-        else s"global (~/$globalFolder)".dim
+        val location =
+          if isProject then s"project ($folder)".blue
+          else s"global (~/$globalFolder)".dim
 
-      if agents.length > 1 then println(s"\n--- ${agent.toString} ---".bold)
-      else ()
+        if agents.length > 1 then println(s"\n--- ${agent.toString} ---".bold)
+        else ()
 
-      println(s"Installing from: ${source.cyan}")
-      println(s"Location: $location")
-      if agents.length <= 1 then {
-        if isProject then println(
-          s"Default install is project-local (./$folder). Use --global for ~/$globalFolder.".dim
-        )
-        else
-          println(s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim)
-      } else ()
-      println()
-
-      resolvedSource match {
-        case ResolvedSource.Local(localPath, sourceInfo) =>
-          installFromLocal(localPath, targetDir, options, sourceInfo)
-
-        case ResolvedSource.Git(repoDir, repoUrl, skillSubpath, sourceInfo) =>
-          if skillSubpath.nonEmpty then installSpecificSkill(
-            repoDir,
-            skillSubpath,
-            targetDir,
-            isProject,
-            options,
-            sourceInfo
+        println(s"Installing from: ${source.cyan}")
+        println(s"Location: $location")
+        if agents.length <= 1 then {
+          if isProject then println(
+            s"Default install is project-local (./$folder). Use --global for ~/$globalFolder.".dim
           )
-          else {
-            val repoName = getRepoName(repoUrl)
-            installFromRepo(repoDir, targetDir, options, repoName, sourceInfo)
-          }
+          else
+            println(s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim)
+        } else ()
+        println()
+
+        resolvedSource match {
+          case ResolvedSource.Local(localPath, sourceInfo) =>
+            installFromLocal(localPath, targetDir, options, sourceInfo)
+
+          case ResolvedSource.Git(repoDir, repoUrl, skillSubpath, sourceInfo) =>
+            if skillSubpath.nonEmpty then installSpecificSkill(
+              repoDir,
+              skillSubpath,
+              targetDir,
+              isProject,
+              options,
+              sourceInfo
+            )
+            else {
+              val repoName = getRepoName(repoUrl)
+              installFromRepo(repoDir, targetDir, options, repoName, sourceInfo)
+            }
+        }
+
+        AgentsMd.updateAgentsMdForAgent(agent, options.global)
       }
 
-      AgentsMd.updateAgentsMdForAgent(agent, options.global)
+      printPostInstallHints(isProject)
+    } finally {
+      resolvedSource.cleanup()
     }
-
-    resolvedSource match {
-      case ResolvedSource.Git(_, _, _, _) => resolvedSource.cleanup()
-      case _ => ()
-    }
-
-    printPostInstallHints(isProject)
   }
+
+  final class SkillInstallException(val exitCode: Int) extends RuntimeException
 
   /** Resolved source — either local or a cloned git repo. */
   private enum ResolvedSource {
@@ -130,7 +132,8 @@ object Install {
     def cleanup(): Unit = this match {
       case Git(repoDir, _, _, _) =>
         val tempDir = repoDir / os.up
-        os.remove.all(tempDir)
+        aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
+        aiskills.cli.TempDirCleanup.unregister()
       case _ => ()
     }
   }
@@ -148,7 +151,7 @@ object Install {
         case _ =>
           System.err.println("Error: Invalid source format".red)
           System.err.println("Expected: owner/repo, owner/repo/skill-name, git URL, or local path")
-          sys.exit(1)
+          throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
       }
     }
   }
@@ -168,6 +171,7 @@ object Install {
 
       val tempDir    = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
       os.makeDir.all(tempDir)
+      aiskills.cli.TempDirCleanup.register(tempDir)
       val sourceInfo = InstallSourceInfo(
         source = source,
         sourceType = SkillSourceType.Git,
@@ -184,8 +188,9 @@ object Install {
           val msg = ex.getMessage
           if msg.nonEmpty then println(msg.dim) else ()
           println("\nTip: For private repos, ensure git SSH keys or credentials are configured".yellow)
-          os.remove.all(tempDir)
-          sys.exit(1)
+          aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
+          aiskills.cli.TempDirCleanup.unregister()
+          throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
         case Success(_) =>
           println(" done")
       }
@@ -210,10 +215,10 @@ object Install {
   ): Unit = {
     if !os.exists(localPath) then {
       System.err.println(s"Error: Path does not exist: $localPath".red)
-      sys.exit(1)
+      throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
     } else if !os.isDir(localPath) then {
       System.err.println("Error: Path must be a directory".red)
-      sys.exit(1)
+      throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
     } else {
       val skillMdPath = localPath / "SKILL.md"
       if os.exists(skillMdPath) then {
@@ -236,7 +241,7 @@ object Install {
 
     if !Yaml.hasValidFrontmatter(content) then {
       System.err.println("Error: Invalid SKILL.md (missing YAML frontmatter)".red)
-      sys.exit(1)
+      throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
     } else {
       val skillName  = skillDir.last
       val targetPath = targetDir / skillName
@@ -246,7 +251,7 @@ object Install {
         os.makeDir.all(targetDir)
         if !isPathInside(targetPath, targetDir) then {
           System.err.println("Security error: Installation path outside target directory".red)
-          sys.exit(1)
+          throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
         } else {
           os.copy(skillDir, targetPath, replaceExisting = true)
           SkillMetadata.writeSkillMetadata(targetPath, buildLocalMetadata(sourceInfo, skillDir))
@@ -271,12 +276,12 @@ object Install {
 
     if !os.exists(skillMdPath) then {
       System.err.println(s"Error: SKILL.md not found at $skillSubpath".red)
-      sys.exit(1)
+      throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
     } else {
       val content = os.read(skillMdPath)
       if !Yaml.hasValidFrontmatter(content) then {
         System.err.println("Error: Invalid SKILL.md (missing YAML frontmatter)".red)
-        sys.exit(1)
+        throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
       } else {
         val skillName  = skillSubpath.split("/").last
         val targetPath = targetDir / skillName
@@ -286,7 +291,7 @@ object Install {
           os.makeDir.all(targetDir)
           if !isPathInside(targetPath, targetDir) then {
             System.err.println("Security error: Installation path outside target directory".red)
-            sys.exit(1)
+            throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
           } else {
             os.copy(skillDir, targetPath, replaceExisting = true)
             SkillMetadata.writeSkillMetadata(targetPath, buildGitMetadata(sourceInfo, skillSubpath))
@@ -321,7 +326,7 @@ object Install {
         val content = os.read(rootSkillPath)
         if !Yaml.hasValidFrontmatter(content) then {
           System.err.println("Error: Invalid SKILL.md (missing YAML frontmatter)".red)
-          sys.exit(1)
+          throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
         } else {
           val frontmatterName = Yaml.extractYamlField(content, "name")
           val skillName       =
@@ -355,7 +360,7 @@ object Install {
 
         if skillDirs.isEmpty then {
           System.err.println("Error: No SKILL.md files found in repository".red)
-          sys.exit(1)
+          throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
         } else {
           val fromDirs = skillDirs.flatMap { skillDir =>
             val skillMdPath = skillDir / "SKILL.md"
@@ -373,7 +378,7 @@ object Install {
 
           if fromDirs.isEmpty then {
             System.err.println("Error: No valid SKILL.md files found".red)
-            sys.exit(1)
+            throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
           } else
             fromDirs
         }
@@ -409,7 +414,7 @@ object Install {
           }
         }
         result match {
-          case Left(code) => sys.exit(code)
+          case Left(code) => throw SkillInstallException(code) // scalafix:ok DisableSyntax.throw
           case Right(list) => list
         }
       } else
@@ -501,7 +506,7 @@ object Install {
           }
         }
         result match {
-          case Left(code) => sys.exit(code)
+          case Left(code) => throw SkillInstallException(code) // scalafix:ok DisableSyntax.throw
           case Right(v) => v
         }
       }

@@ -238,12 +238,16 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     SigintHandler.install()
-    command.parse(PlatformApp.ambientArgs.getOrElse(args.toSeq), sys.env) match {
-      case Left(help) =>
-        System.err.println(renderHelp(help))
-        if help.errors.nonEmpty then sys.exit(1)
-        else ()
-      case Right(_) => ()
+    try {
+      command.parse(PlatformApp.ambientArgs.getOrElse(args.toSeq), sys.env) match {
+        case Left(help) =>
+          System.err.println(renderHelp(help))
+          if help.errors.nonEmpty then sys.exit(1)
+          else ()
+        case Right(_) => ()
+      }
+    } catch {
+      case e: Install.SkillInstallException => sys.exit(e.exitCode)
     }
   }
 
