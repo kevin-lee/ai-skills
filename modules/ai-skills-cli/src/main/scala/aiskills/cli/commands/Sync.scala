@@ -65,24 +65,30 @@ object Sync {
           val targetPath = targetDir / name
 
           val proceed =
-            if os.exists(targetPath) && !yes then Prompts.sync.use { prompts =>
-              println(
-                s"\u26a0 All existing files and folders in '$name' will be removed if you choose to overwrite.".yellow
-              )
-              prompts.confirm(
-                s"Skill '$name' already exists in ${to.toString} (${s.location.toString.toLowerCase}). Overwrite?".yellow,
-                default = false,
-              ) match {
-                case Completion.Finished(v) =>
-                  if v then os.remove.all(targetPath) else ()
-                  v
-                case Completion.Fail(CompletionError.Interrupted) =>
-                  println("\n\nCancelled by user".yellow)
-                  sys.exit(0)
-                case Completion.Fail(CompletionError.Error(_)) => false
+            if os.exists(targetPath) && !yes then {
+              aiskills.cli.SigintHandler.install()
+              val result = Prompts.sync.use { prompts =>
+                println(
+                  s"\u26a0 All existing files and folders in '$name' will be removed if you choose to overwrite.".yellow
+                )
+                prompts.confirm(
+                  s"Skill '$name' already exists in ${to.toString} (${s.location.toString.toLowerCase}). Overwrite?".yellow,
+                  default = false,
+                ) match {
+                  case Completion.Finished(v) =>
+                    if v then os.remove.all(targetPath) else ()
+                    Right(v)
+                  case Completion.Fail(CompletionError.Interrupted) =>
+                    println("\n\nCancelled by user".yellow)
+                    Left(0)
+                  case Completion.Fail(CompletionError.Error(_)) => Right(false)
+                }
               }
-            }
-            else if os.exists(targetPath) then {
+              result match {
+                case Left(code) => sys.exit(code)
+                case Right(v) => v
+              }
+            } else if os.exists(targetPath) then {
               println(s"Overwriting: $name (all existing files and folders will be removed)".dim)
               os.remove.all(targetPath)
               true
@@ -158,18 +164,25 @@ object Sync {
           s"${a.toString.padTo(15, ' ')} ($count skill(s))"
         }
 
-        val sourceAgent = Prompts.sync.use { prompts =>
-          prompts.multiChoiceNoneSelected("Select source agent (pick one)", agentLabels) match {
-            case Completion.Finished(selectedLabels) =>
-              selectedLabels.headOption.flatMap { label =>
-                agents.find(a => label.contains(a.toString))
-              }
-            case Completion.Fail(CompletionError.Interrupted) =>
-              println("\n\nCancelled by user".yellow)
-              sys.exit(0)
-            case Completion.Fail(CompletionError.Error(msg)) =>
-              System.err.println(s"Error: $msg")
-              sys.exit(1)
+        val sourceAgent = {
+          aiskills.cli.SigintHandler.install()
+          val result = Prompts.sync.use { prompts =>
+            prompts.multiChoiceNoneSelected("Select source agent (pick one)", agentLabels) match {
+              case Completion.Finished(selectedLabels) =>
+                Right(selectedLabels.headOption.flatMap { label =>
+                  agents.find(a => label.contains(a.toString))
+                })
+              case Completion.Fail(CompletionError.Interrupted) =>
+                println("\n\nCancelled by user".yellow)
+                Left(0)
+              case Completion.Fail(CompletionError.Error(msg)) =>
+                System.err.println(s"Error: $msg")
+                Left(1)
+            }
+          }
+          result match {
+            case Left(code) => sys.exit(code)
+            case Right(v) => v
           }
         }
 
@@ -181,16 +194,23 @@ object Sync {
             val targetAgents = Agent.all.filterNot(_ == from)
             val targetLabels = targetAgents.map(_.toString)
 
-            val selectedTargets = Prompts.sync.use { prompts =>
-              prompts.multiChoiceNoneSelected("Select target agent(s)", targetLabels) match {
-                case Completion.Finished(selectedLabels) =>
-                  targetAgents.filter(a => selectedLabels.contains(a.toString))
-                case Completion.Fail(CompletionError.Interrupted) =>
-                  println("\n\nCancelled by user".yellow)
-                  sys.exit(0)
-                case Completion.Fail(CompletionError.Error(msg)) =>
-                  System.err.println(s"Error: $msg")
-                  sys.exit(1)
+            val selectedTargets = {
+              aiskills.cli.SigintHandler.install()
+              val result = Prompts.sync.use { prompts =>
+                prompts.multiChoiceNoneSelected("Select target agent(s)", targetLabels) match {
+                  case Completion.Finished(selectedLabels) =>
+                    Right(targetAgents.filter(a => selectedLabels.contains(a.toString)))
+                  case Completion.Fail(CompletionError.Interrupted) =>
+                    println("\n\nCancelled by user".yellow)
+                    Left(0)
+                  case Completion.Fail(CompletionError.Error(msg)) =>
+                    System.err.println(s"Error: $msg")
+                    Left(1)
+                }
+              }
+              result match {
+                case Left(code) => sys.exit(code)
+                case Right(v) => v
               }
             }
 

@@ -387,25 +387,30 @@ object Install {
           s"${info.skillName.padTo(25, ' ')} ${formatSize(info.size)}"
         }
 
-        Prompts.sync.use { prompts =>
+        aiskills.cli.SigintHandler.install()
+        val result = Prompts.sync.use { prompts =>
           prompts.multiChoiceAllSelected("Select skills to install", labels) match {
             case Completion.Finished(selectedLabels) =>
               if selectedLabels.isEmpty then {
                 println("No skills selected. Installation cancelled.".yellow)
-                Nil
+                Right(Nil)
               } else
-                skillInfos.filter { info =>
+                Right(skillInfos.filter { info =>
                   selectedLabels.exists(_.contains(info.skillName))
-                }
+                })
 
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
-              sys.exit(0)
+              Left(0)
 
             case Completion.Fail(CompletionError.Error(msg)) =>
               System.err.println(s"Error: $msg")
-              sys.exit(1)
+              Left(1)
           }
+        }
+        result match {
+          case Left(code) => sys.exit(code)
+          case Right(list) => list
         }
       } else
         skillInfos
@@ -478,22 +483,28 @@ object Install {
         println(s"Overwriting: $skillName (all existing files and folders will be removed)".dim)
         os.remove.all(targetPath)
         true
-      } else
-        Prompts.sync.use { prompts =>
+      } else {
+        aiskills.cli.SigintHandler.install()
+        val result = Prompts.sync.use { prompts =>
           println(
             s"\u26a0 All existing files and folders in '$skillName' will be removed if you choose to overwrite.".yellow
           )
           prompts.confirm(s"Skill '$skillName' already exists. Overwrite?".yellow, default = false) match {
             case Completion.Finished(shouldOverwrite) =>
               if shouldOverwrite then os.remove.all(targetPath) else ()
-              shouldOverwrite
+              Right(shouldOverwrite)
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
-              sys.exit(0)
+              Left(0)
             case Completion.Fail(CompletionError.Error(_)) =>
-              false
+              Right(false)
           }
         }
+        result match {
+          case Left(code) => sys.exit(code)
+          case Right(v) => v
+        }
+      }
     } else {
       if !isProject && MarketplaceSkills.anthropicMarketplaceSkills.contains(skillName) then {
         System.err.println(s"\n\u26a0\ufe0f  Warning: '$skillName' matches an Anthropic marketplace skill".yellow)

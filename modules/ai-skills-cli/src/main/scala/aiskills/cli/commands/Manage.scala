@@ -22,7 +22,8 @@ object Manage {
         s"${skill.name.padTo(25, ' ')} $locationLabel"
       }
 
-      Prompts.sync.use { prompts =>
+      aiskills.cli.SigintHandler.install()
+      val result = Prompts.sync.use { prompts =>
         prompts.multiChoiceNoneSelected("Select skills to remove", labels) match {
           case Completion.Finished(selectedLabels) =>
             if selectedLabels.isEmpty then println("No skills selected for removal.".yellow)
@@ -39,15 +40,20 @@ object Manage {
               }
               println(s"\n\u2705 Removed ${selectedIndices.length} skill(s)".green)
             }
+            Right(())
 
           case Completion.Fail(CompletionError.Interrupted) =>
             println("\n\nCancelled by user".yellow)
-            sys.exit(0)
+            Left(0)
 
           case Completion.Fail(CompletionError.Error(msg)) =>
             System.err.println(s"Error: $msg")
-            sys.exit(1)
+            Left(1)
         }
+      }
+      result match {
+        case Left(code) => sys.exit(code)
+        case Right(()) => ()
       }
     }
   }
