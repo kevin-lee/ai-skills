@@ -15,6 +15,49 @@ Built with Scala 3 and Scala Native — compiles to a standalone binary with no 
 | **Gemini**              | `.gemini/skills/` | `~/.gemini/skills/`  |
 | **Copilot**             | `.github/skills/` | `~/.copilot/skills/` |
 
+## Install
+
+### Homebrew (macOS / Linux)
+
+Install directly (taps automatically):
+
+```sh
+brew install kevin-lee/tap/ai-skills
+```
+
+Or tap first, then install:
+
+Tap:
+```sh
+brew tap kevin-lee/tap
+```
+Then install:
+```sh
+brew install ai-skills
+```
+
+### Download from GitHub Releases
+
+Pre-built binaries are available on the [Releases](https://github.com/kevin-lee/ai-skills/releases) page.
+
+| Platform        | Binary                    |
+|-----------------|---------------------------|
+| macOS 26+ ARM64 | `aiskills-macos-26-arm64` |
+| macOS 15  ARM64 | `aiskills-macos-15-arm64` |
+| Linux ARM64     | `aiskills-linux-arm64`    |
+| Linux x86_64    | `aiskills-linux-x86_64`   |
+
+```sh
+# Example: download and install on macOS ARM64
+curl -L -o aiskills https://github.com/kevin-lee/ai-skills/releases/latest/download/aiskills-macos-26-arm64
+chmod +x aiskills
+sudo mv aiskills /usr/local/bin/
+```
+
+### Build from Source
+
+See [Prerequisites](#prerequisites) and [Build](#build) below.
+
 ## Prerequisites
 
 - [sbt](https://www.scala-sbt.org/) 1.12.5+
