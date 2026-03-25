@@ -231,7 +231,7 @@ object Main {
       else
         Opts
           .flag("version", "Print the version number and exit.", visibility = Visibility.Partial)
-          .map(_ => System.err.println(version))
+          .map(_ => println(version))
 
     Command(name, header, helpFlag = true)(showVersion.orElse(main))
   }
