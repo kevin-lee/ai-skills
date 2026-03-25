@@ -25,7 +25,7 @@ object Main {
                |  aiskills remove commit                        # Remove a skill
                |  aiskills manage                               # Interactive removal
                |""".stripMargin,
-    version = "0.1.0",
+    version = "0.1.1",
     main = {
 
       val listCommand = Opts.subcommand(
