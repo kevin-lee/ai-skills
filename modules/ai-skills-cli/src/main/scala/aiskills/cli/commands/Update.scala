@@ -38,6 +38,8 @@ object Update {
         val missingRepoSkillFile  = List.newBuilder[(String, String)]
         val cloneFailures         = List.newBuilder[String]
 
+        aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
+
         val (updated, skipped) = targets.foldLeft((0, 0)) {
           case ((upd, skp), skill) =>
             val metadata = SkillMetadata.readSkillMetadata(skill.path)
@@ -84,6 +86,7 @@ object Update {
                   case Some(repoUrl) =>
                     val tempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
                     os.makeDir.all(tempDir)
+                    aiskills.cli.TempDirCleanup.register(tempDir)
                     try {
                       print(s"Updating ${skill.name}...")
                       Try {
@@ -121,8 +124,10 @@ object Update {
                             (upd + 1, skp)
                           }
                       }
-                    } finally
-                      os.remove.all(tempDir)
+                    } finally {
+                      aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
+                      aiskills.cli.TempDirCleanup.unregister()
+                    }
                 }
             }
         }
