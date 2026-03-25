@@ -236,7 +236,8 @@ object Main {
     Command(name, header, helpFlag = true)(showVersion.orElse(main))
   }
 
-  def main(args: Array[String]): Unit =
+  def main(args: Array[String]): Unit = {
+    SigintHandler.install()
     command.parse(PlatformApp.ambientArgs.getOrElse(args.toSeq), sys.env) match {
       case Left(help) =>
         System.err.println(renderHelp(help))
@@ -244,6 +245,7 @@ object Main {
         else ()
       case Right(_) => ()
     }
+  }
 
   private val renderHelp: Help => String = {
     // There's a bug in HelpFormat.autoColors
