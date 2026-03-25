@@ -14,8 +14,53 @@ env:
   NATIVE_BIN_NAME: "aiskills"
 
 jobs:
+
+  build:
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    runs-on: ${{ matrix.os.value }}
+    strategy:
+      matrix:
+        os:
+          - { name: "macOS 26 Apple Silicon", value: "macOS-26",         bin-suffix: "-macos-26-arm64" }
+          - { name: "macOS 15 Apple Silicon", value: "macos-15",         bin-suffix: "-macos-15-arm64" }
+          - { name: "Ubuntu ARM64",           value: "ubuntu-24.04-arm", bin-suffix: "-linux-arm64" }
+          - { name: "Ubuntu Latest (x86_64)", value: "ubuntu-latest",    bin-suffix: "-linux-x86_64" }
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.GH_JAVA_VERSION }}
+          distribution: ${{ env.GH_JAVA_DISTRIBUTION }}
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+
+      - name: "Install LLVM and Clang (Ubuntu)"
+        if: startsWith(matrix.os.value, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libstdc++-12-dev
+
+      - name: "Scala Native Build on ${{ matrix.os.name }} - ${{ github.run_number }}"
+        env:
+          CURRENT_BRANCH_NAME: ${{ github.ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          JVM_OPTS: ${{ env.GH_JVM_OPTS }}
+          SBT_OPTS: ${{ env.GH_SBT_OPTS }}
+          APP_BIN_NAME: ${{ env.NATIVE_BIN_NAME }}${{ matrix.os.bin-suffix }}
+        run: |
+          echo "JVM_OPTS=${JVM_OPTS}"
+          echo "SBT_OPTS=${SBT_OPTS}"
+          sbt \
+            -v \
+            clean \
+            test
+
   gh-release:
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
 
     runs-on: ubuntu-latest
     steps:
@@ -82,7 +127,7 @@ jobs:
           sbt \
             -v \
             clean \
-            test \
+            compile \
             cli/nativeLink
           
           NATIVE_BIN_DIR=$(ls -d modules/${{ env.PROJECT_NAME }}-cli/target/scala-*/)
@@ -90,7 +135,10 @@ jobs:
 
           echo "ls -lGh ${NATIVE_BIN_DIR}"
           ls -lGh "${NATIVE_BIN_DIR}"
-
+          
+          echo "Remove test app if exists: ${NATIVE_BIN_DIR}${{ env.NATIVE_BIN_NAME }}-test"
+          rm -f "${NATIVE_BIN_DIR}${{ env.NATIVE_BIN_NAME }}-test"
+          
           echo "mv ${NATIVE_BIN_DIR}${{ env.NATIVE_BIN_NAME }} ${NATIVE_BIN_DIR}${APP_BIN_NAME}"
           mv "${NATIVE_BIN_DIR}${{ env.NATIVE_BIN_NAME }}" "${NATIVE_BIN_DIR}${APP_BIN_NAME}"
 
