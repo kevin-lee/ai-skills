@@ -1,5 +1,6 @@
 package aiskills.core
 
+import cats.syntax.all.*
 import hedgehog.*
 import hedgehog.runner.*
 import io.circe.syntax.*
@@ -25,31 +26,31 @@ object AgentSpec extends Properties {
   private def testFromStringLowercase: Result =
     Result.all(
       List(
-        Agent.fromString("universal") ==== Some(Agent.Universal),
-        Agent.fromString("claude") ==== Some(Agent.Claude),
-        Agent.fromString("cursor") ==== Some(Agent.Cursor),
-        Agent.fromString("codex") ==== Some(Agent.Codex),
-        Agent.fromString("gemini") ==== Some(Agent.Gemini),
-        Agent.fromString("windsurf") ==== Some(Agent.Windsurf),
-        Agent.fromString("copilot") ==== Some(Agent.Copilot),
+        Agent.fromString("universal") ==== Agent.Universal.some,
+        Agent.fromString("claude") ==== Agent.Claude.some,
+        Agent.fromString("cursor") ==== Agent.Cursor.some,
+        Agent.fromString("codex") ==== Agent.Codex.some,
+        Agent.fromString("gemini") ==== Agent.Gemini.some,
+        Agent.fromString("windsurf") ==== Agent.Windsurf.some,
+        Agent.fromString("copilot") ==== Agent.Copilot.some,
       )
     )
 
   private def testFromStringMixedCase: Result =
     Result.all(
       List(
-        Agent.fromString("Claude") ==== Some(Agent.Claude),
-        Agent.fromString("CURSOR") ==== Some(Agent.Cursor),
-        Agent.fromString("Universal") ==== Some(Agent.Universal),
+        Agent.fromString("Claude") ==== Agent.Claude.some,
+        Agent.fromString("CURSOR") ==== Agent.Cursor.some,
+        Agent.fromString("Universal") ==== Agent.Universal.some,
       )
     )
 
   private def testFromStringInvalid: Result =
     Result.all(
       List(
-        Agent.fromString("invalid") ==== None,
-        Agent.fromString("") ==== None,
-        Agent.fromString("vscode") ==== None,
+        Agent.fromString("invalid") ==== none[Agent],
+        Agent.fromString("") ==== none[Agent],
+        Agent.fromString("vscode") ==== none[Agent],
       )
     )
 

@@ -1,8 +1,11 @@
 package aiskills.core
 
-import cats.syntax.either.*
+import cats.Eq
+import cats.syntax.all.*
 import io.circe.generic.semiauto.*
 import io.circe.{Decoder, Encoder}
+
+given Eq[os.Path] = Eq.fromUniversalEquals
 
 enum Agent(val projectDirName: String, val globalDirName: String) {
   case Universal extends Agent(".agents", ".agents")
@@ -15,9 +18,11 @@ enum Agent(val projectDirName: String, val globalDirName: String) {
 }
 
 object Agent {
+  given Eq[Agent] = Eq.fromUniversalEquals
+
   val all: List[Agent] = Agent.values.toList
 
-  val allNonUniversal: List[Agent] = all.filterNot(_ == Agent.Universal)
+  val allNonUniversal: List[Agent] = all.filterNot(_ === Agent.Universal)
 
   def fromString(s: String): Option[Agent] =
     all.find(_.toString.equalsIgnoreCase(s))
@@ -40,6 +45,8 @@ enum SkillLocation {
 }
 
 object SkillLocation {
+  given Eq[SkillLocation] = Eq.fromUniversalEquals
+
   given Encoder[SkillLocation] = Encoder.encodeString.contramap {
     case SkillLocation.Project => "project"
     case SkillLocation.Global => "global"
@@ -69,20 +76,20 @@ final case class SkillLocationInfo(
 )
 
 final case class InstallOptions(
-  global: Boolean = false,
-  agent: Agent = Agent.Universal,
-  allAgents: Boolean = false,
-  yes: Boolean = false,
+  global: Boolean,
+  agent: Agent,
+  allAgents: Boolean,
+  yes: Boolean,
 )
 
 final case class ReadOptions(
-  prefer: Option[Agent] = None,
+  prefer: Option[Agent],
 )
 
 final case class SkillMetadata(
   name: String,
   description: String,
-  context: Option[String] = None,
+  context: Option[String],
 )
 
 enum SkillSourceType {
@@ -90,6 +97,8 @@ enum SkillSourceType {
 }
 
 object SkillSourceType {
+  given Eq[SkillSourceType] = Eq.fromUniversalEquals
+
   given Encoder[SkillSourceType] = Encoder.encodeString.contramap {
     case SkillSourceType.Git => "git"
     case SkillSourceType.GitHub => "github"
@@ -107,9 +116,9 @@ object SkillSourceType {
 final case class SkillSourceMetadata(
   source: String,
   sourceType: SkillSourceType,
-  repoUrl: Option[String] = None,
-  subpath: Option[String] = None,
-  localPath: Option[String] = None,
+  repoUrl: Option[String],
+  subpath: Option[String],
+  localPath: Option[String],
   installedAt: String,
 )
 
@@ -131,6 +140,16 @@ object AiSkillsError {
   final case class IoError(detail: String) extends AiSkillsError
   final case class InvalidAgent(name: String) extends AiSkillsError
 
+  def skillNotFound(name: String): AiSkillsError                          = SkillNotFound(name)
+  def gitCloneError(url: String, detail: String): AiSkillsError           = GitCloneError(url, detail)
+  def metadataParseError(path: os.Path, detail: String): AiSkillsError    = MetadataParseError(path, detail)
+  def invalidFrontmatter(path: os.Path): AiSkillsError                    = InvalidFrontmatter(path)
+  def invalidSource(source: String): AiSkillsError                        = InvalidSource(source)
+  def pathTraversalError(target: os.Path, parent: os.Path): AiSkillsError = PathTraversalError(target, parent)
+  def invalidOutputPath(path: String): AiSkillsError                      = InvalidOutputPath(path)
+  def ioError(detail: String): AiSkillsError                              = IoError(detail)
+  def invalidAgent(name: String): AiSkillsError                           = InvalidAgent(name)
+
   extension (error: AiSkillsError) {
     def message: String = error match {
       case SkillNotFound(name) => s"Skill '$name' not found"
@@ -149,16 +168,16 @@ object AiSkillsError {
 }
 
 final case class SyncOptions(
-  skillName: Option[String] = None,
-  from: Option[Agent] = None,
-  to: Option[Agent] = None,
-  allAgents: Boolean = false,
-  yes: Boolean = false,
+  skillName: Option[String],
+  from: Option[Agent],
+  to: Option[Agent],
+  allAgents: Boolean,
+  yes: Boolean,
 )
 
 final case class InstallSourceInfo(
   source: String,
   sourceType: SkillSourceType,
-  repoUrl: Option[String] = None,
-  localRoot: Option[os.Path] = None,
+  repoUrl: Option[String],
+  localRoot: Option[os.Path],
 )

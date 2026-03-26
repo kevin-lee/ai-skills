@@ -1,7 +1,9 @@
 package aiskills.cli.commands
 
 import aiskills.core.ReadOptions
+import aiskills.core.given
 import aiskills.core.utils.{Dirs, SkillNames, Skills}
+import cats.syntax.all.*
 
 object Read {
 
@@ -52,7 +54,7 @@ object Read {
         val allLocations = Skills.findAllSkillLocations(name)
         if allLocations.length > 1 then {
           val otherDirs = allLocations
-            .filterNot(_._1 == skill.source)
+            .filterNot(_._1 === skill.source)
             .map {
               case (dir, agent, _) =>
                 val label =

@@ -2,6 +2,7 @@ package aiskills.cli.commands
 
 import aiskills.core.SkillLocation
 import aiskills.core.utils.Skills
+import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 import cue4s.*
 
@@ -14,7 +15,7 @@ object Manage {
     if skills.isEmpty then println("No skills installed.")
     else {
       val sorted = skills.sortBy { s =>
-        (s.agent.ordinal, if s.location == SkillLocation.Project then 0 else 1, s.name)
+        (s.agent.ordinal, if s.location === SkillLocation.Project then 0 else 1, s.name)
       }
 
       val labels = sorted.map { skill =>
@@ -29,7 +30,7 @@ object Manage {
             if selectedLabels.isEmpty then println("No skills selected for removal.".yellow)
             else {
               val selectedIndices = selectedLabels.flatMap { label =>
-                labels.zipWithIndex.find(_._1 == label).map(_._2)
+                labels.zipWithIndex.find(_._1 === label).map(_._2)
               }
               for idx <- selectedIndices do {
                 val skill = sorted(idx)

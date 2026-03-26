@@ -1,6 +1,7 @@
 package aiskills.core.utils
 
 import aiskills.core.SkillSourceMetadata
+import cats.syntax.all.*
 import io.circe.parser.decode
 import io.circe.syntax.*
 
@@ -13,7 +14,7 @@ object SkillMetadata {
   /** Read skill source metadata from a skill directory. */
   def readSkillMetadata(skillDir: os.Path): Option[SkillSourceMetadata] = {
     val metadataPath = skillDir / SkillMetadataFile
-    if !os.exists(metadataPath) then None
+    if !os.exists(metadataPath) then none[SkillSourceMetadata]
     else
       Try(os.read(metadataPath))
         .toOption

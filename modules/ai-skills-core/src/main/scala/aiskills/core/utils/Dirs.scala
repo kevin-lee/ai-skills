@@ -1,13 +1,16 @@
 package aiskills.core.utils
 
 import aiskills.core.{Agent, SkillLocation}
+import cats.syntax.all.*
 
 object Dirs {
 
   /** Get skills directory path for a specific agent. */
-  def getSkillsDir(agent: Agent, global: Boolean): os.Path =
-    if global then os.home / os.RelPath(agent.globalDirName) / "skills"
-    else os.pwd / os.RelPath(agent.projectDirName) / "skills"
+  def getSkillsDir(agent: Agent, location: SkillLocation): os.Path =
+    location match {
+      case SkillLocation.Global => os.home / os.RelPath(agent.globalDirName) / "skills"
+      case SkillLocation.Project => os.pwd / os.RelPath(agent.projectDirName) / "skills"
+    }
 
   /** Get all searchable skill directories in priority order.
     * Priority:
@@ -39,7 +42,7 @@ object Dirs {
       case None => getSearchDirs()
       case Some(preferred) =>
         val all                   = getSearchDirs()
-        val (preferredDirs, rest) = all.partition(_._2 == preferred)
+        val (preferredDirs, rest) = all.partition(_._2 === preferred)
         preferredDirs ++ rest
     }
 }
