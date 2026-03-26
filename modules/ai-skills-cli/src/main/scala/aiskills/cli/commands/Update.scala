@@ -2,6 +2,7 @@ package aiskills.cli.commands
 
 import aiskills.core.SkillSourceType
 import aiskills.core.utils.{SkillMetadata, SkillNames, Skills}
+import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
 import scala.util.{Failure, Success, Try}
@@ -22,7 +23,7 @@ object Update {
       val targets =
         if requested.nonEmpty then {
           val requestedSet = requested.toSet
-          val missing      = requested.filterNot(name => skills.exists(_.name == name))
+          val missing      = requested.filterNot(name => skills.exists(_.name === name))
           if missing.nonEmpty then println(s"Skipping missing skills: ${missing.mkString(", ")}".yellow)
           else ()
           skills.filter(s => requestedSet.contains(s.name))
@@ -51,7 +52,7 @@ object Update {
                 missingMetadata += skill.name
                 (upd, skp + 1)
 
-              case Some(meta) if meta.sourceType == SkillSourceType.Local =>
+              case Some(meta) if meta.sourceType === SkillSourceType.Local =>
                 val localPath = meta.localPath.map(os.Path(_))
                 localPath match {
                   case None =>
@@ -103,7 +104,7 @@ object Update {
 
                         case Success(_) =>
                           val repoDir   = tempDir / "repo"
-                          val subpath   = meta.subpath.filter(s => s.nonEmpty && s != ".")
+                          val subpath   = meta.subpath.filter(s => s.nonEmpty && s =!= ".")
                           val sourceDir = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
 
                           if !os.exists(sourceDir / "SKILL.md") then {

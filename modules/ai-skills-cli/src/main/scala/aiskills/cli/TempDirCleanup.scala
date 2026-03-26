@@ -1,5 +1,8 @@
 package aiskills.cli
 
+import aiskills.core.given
+import cats.syntax.all.*
+
 import scala.scalanative.libc.stdlib
 import scala.scalanative.unsafe.*
 
@@ -8,7 +11,7 @@ object TempDirCleanup {
   val TempDirPrefix: String = ".aiskills-temp-"
 
   def isTempDir(dir: os.Path): Boolean =
-    (dir / os.up) == os.home && dir.last.startsWith(TempDirPrefix)
+    (dir / os.up) === os.home && dir.last.startsWith(TempDirPrefix)
 
   def safeRemoveAll(dir: os.Path): Unit =
     if isTempDir(dir) then os.remove.all(dir) else ()

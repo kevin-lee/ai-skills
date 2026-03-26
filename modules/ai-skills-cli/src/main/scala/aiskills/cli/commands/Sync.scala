@@ -2,6 +2,7 @@ package aiskills.cli.commands
 
 import aiskills.core.{Agent, SkillLocation, SyncOptions}
 import aiskills.core.utils.{AgentsMd, Dirs, Skills}
+import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
 
@@ -20,7 +21,7 @@ object Sync {
 
       // Specific skill, from specified, all agents
       case (Some(from), None, Some(name), true) =>
-        val targets = Agent.all.filterNot(_ == from)
+        val targets = Agent.all.filterNot(_ === from)
         for target <- targets do {
           syncSingleSkill(name, from, target, options.yes)
         }
@@ -31,7 +32,7 @@ object Sync {
 
       // All skills from one agent to all others
       case (Some(from), None, None, true) =>
-        val targets = Agent.all.filterNot(_ == from)
+        val targets = Agent.all.filterNot(_ === from)
         for target <- targets do {
           syncAllSkills(from, target, options.yes)
         }
@@ -48,11 +49,12 @@ object Sync {
     }
 
   private def syncSingleSkill(name: String, from: Agent, to: Agent, yes: Boolean): Unit = {
-    if from == to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
+    if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
     else {
       // Try project first, then global
-      val sourceSkills = Skills.findSkillsByAgent(from, global = false) ++ Skills.findSkillsByAgent(from, global = true)
-      val skill        = sourceSkills.find(_.name == name)
+      val sourceSkills =
+        Skills.findSkillsByAgent(from, SkillLocation.Project) ++ Skills.findSkillsByAgent(from, SkillLocation.Global)
+      val skill        = sourceSkills.find(_.name === name)
 
       skill match {
         case None =>
@@ -60,8 +62,7 @@ object Sync {
           sys.exit(1)
 
         case Some(s) =>
-          val isGlobal   = s.location == SkillLocation.Global
-          val targetDir  = Dirs.getSkillsDir(to, global = isGlobal)
+          val targetDir  = Dirs.getSkillsDir(to, s.location)
           val targetPath = targetDir / name
 
           val proceed =
@@ -100,7 +101,7 @@ object Sync {
             os.copy(s.path, targetPath, replaceExisting = true)
             println(s"\u2705 Synced: $name (${from.toString} -> ${to.toString})".green)
 
-            AgentsMd.updateAgentsMdForAgent(to, isGlobal)
+            AgentsMd.updateAgentsMdForAgent(to, s.location)
           } else
             println(s"Skipped: $name".yellow)
       }
@@ -108,18 +109,17 @@ object Sync {
   }
 
   private def syncAllSkills(from: Agent, to: Agent, yes: Boolean): Unit = {
-    if from == to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
+    if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
     else {
       val sourceSkills =
-        Skills.findSkillsByAgent(from, global = false) ++ Skills.findSkillsByAgent(from, global = true)
+        Skills.findSkillsByAgent(from, SkillLocation.Project) ++ Skills.findSkillsByAgent(from, SkillLocation.Global)
 
       if sourceSkills.isEmpty then println(s"No skills found in ${from.toString} directories.".yellow)
       else {
         println(s"Syncing ${sourceSkills.length} skill(s) from ${from.toString} to ${to.toString}...".dim)
 
         val synced = sourceSkills.count { s =>
-          val isGlobal   = s.location == SkillLocation.Global
-          val targetDir  = Dirs.getSkillsDir(to, global = isGlobal)
+          val targetDir  = Dirs.getSkillsDir(to, s.location)
           val targetPath = targetDir / s.name
 
           if os.exists(targetPath) && !yes then {
@@ -140,8 +140,8 @@ object Sync {
         println(s"\n\u2705 Sync complete: $synced skill(s) synced from ${from.toString} to ${to.toString}".green)
 
         // Update AGENTS.md for target if needed
-        AgentsMd.updateAgentsMdForAgent(to, global = false)
-        AgentsMd.updateAgentsMdForAgent(to, global = true)
+        AgentsMd.updateAgentsMdForAgent(to, SkillLocation.Project)
+        AgentsMd.updateAgentsMdForAgent(to, SkillLocation.Global)
       }
     }
   }
@@ -191,7 +191,7 @@ object Sync {
             println("No agent selected.".yellow)
           case Some(from) =>
             // Step 2: Pick target agents
-            val targetAgents = Agent.all.filterNot(_ == from)
+            val targetAgents = Agent.all.filterNot(_ === from)
             val targetLabels = targetAgents.map(_.toString)
 
             val selectedTargets = {

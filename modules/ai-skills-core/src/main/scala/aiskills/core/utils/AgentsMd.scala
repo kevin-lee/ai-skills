@@ -1,6 +1,6 @@
 package aiskills.core.utils
 
-import aiskills.core.{Agent, Skill}
+import aiskills.core.{Agent, Skill, SkillLocation}
 
 import scala.util.matching.Regex
 import scala.xml.{Elem, PrettyPrinter}
@@ -113,9 +113,12 @@ object AgentsMd {
   }
 
   /** Update AGENTS.md for agents that need it (e.g., Codex, Universal). */
-  def updateAgentsMdForAgent(agent: Agent, global: Boolean): Unit = {
+  def updateAgentsMdForAgent(agent: Agent, location: SkillLocation): Unit = {
     if Agent.needsAgentsMd(agent) then {
-      val outputPath = if global then os.home / "AGENTS.md" else os.pwd / "AGENTS.md"
+      val outputPath = location match {
+        case SkillLocation.Global => os.home / "AGENTS.md"
+        case SkillLocation.Project => os.pwd / "AGENTS.md"
+      }
       val skills     = Skills.findAllSkills()
       if skills.nonEmpty then {
         val xml = generateSkillsXml(skills)

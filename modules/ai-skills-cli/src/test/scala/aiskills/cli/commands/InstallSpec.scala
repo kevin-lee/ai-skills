@@ -1,5 +1,6 @@
 package aiskills.cli.commands
 
+import cats.syntax.all.*
 import hedgehog.*
 import hedgehog.runner.*
 
@@ -206,13 +207,13 @@ object InstallSpec extends Properties {
 
   // getRepoName tests
   private def testRepoNameHttps: Result =
-    Install.getRepoName("https://github.com/owner/repo") ==== Some("repo")
+    Install.getRepoName("https://github.com/owner/repo") ==== "repo".some
 
   private def testRepoNameSsh: Result =
-    Install.getRepoName("git@github.com:owner/repo.git") ==== Some("repo")
+    Install.getRepoName("git@github.com:owner/repo.git") ==== "repo".some
 
   private def testRepoNameStripGit: Result =
-    Install.getRepoName("https://github.com/owner/repo.git") ==== Some("repo")
+    Install.getRepoName("https://github.com/owner/repo.git") ==== "repo".some
 
   // formatSize tests
   private def testFormatBytes: Result =

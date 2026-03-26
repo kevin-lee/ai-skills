@@ -1,6 +1,7 @@
 package aiskills.core.utils
 
 import aiskills.core.{SkillSourceMetadata, SkillSourceType}
+import cats.syntax.all.*
 import hedgehog.*
 import hedgehog.runner.*
 
@@ -23,8 +24,9 @@ object SkillMetadataSpec extends Properties {
       val payload = SkillSourceMetadata(
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
-        repoUrl = Some("https://github.com/owner/repo"),
-        subpath = Some("skills/demo"),
+        repoUrl = "https://github.com/owner/repo".some,
+        subpath = "skills/demo".some,
+        localPath = none[String],
         installedAt = "2026-01-01T00:00:00.000Z",
       )
 

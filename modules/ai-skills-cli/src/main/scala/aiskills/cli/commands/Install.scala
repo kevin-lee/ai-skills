@@ -1,7 +1,8 @@
 package aiskills.cli.commands
 
-import aiskills.core.{Agent, InstallOptions, InstallSourceInfo, SkillSourceMetadata, SkillSourceType}
+import aiskills.core.{Agent, InstallOptions, InstallSourceInfo, SkillLocation, SkillSourceMetadata, SkillSourceType}
 import aiskills.core.utils.{AgentsMd, MarketplaceSkills, SkillMetadata, Yaml}
+import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 import cue4s.*
 
@@ -29,7 +30,7 @@ object Install {
   def getRepoName(repoUrl: String): Option[String] = {
     val cleaned = repoUrl.stripSuffix(".git")
     cleaned.split("/").lastOption.flatMap { lastPart =>
-      val maybeRepo = if lastPart.contains(":") then lastPart.split(":").lastOption else Some(lastPart)
+      val maybeRepo = if lastPart.contains(":") then lastPart.split(":").lastOption else lastPart.some
       maybeRepo.filter(_.nonEmpty)
     }
   }
@@ -113,7 +114,10 @@ object Install {
             }
         }
 
-        AgentsMd.updateAgentsMdForAgent(agent, options.global)
+        AgentsMd.updateAgentsMdForAgent(
+          agent,
+          if options.global then SkillLocation.Global else SkillLocation.Project,
+        )
       }
 
       printPostInstallHints(isProject)
@@ -128,13 +132,17 @@ object Install {
   private enum ResolvedSource {
     case Local(localPath: os.Path, sourceInfo: InstallSourceInfo)
     case Git(repoDir: os.Path, repoUrl: String, skillSubpath: String, sourceInfo: InstallSourceInfo)
+  }
 
-    def cleanup(): Unit = this match {
-      case Git(repoDir, _, _, _) =>
-        val tempDir = repoDir / os.up
-        aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
-        aiskills.cli.TempDirCleanup.unregister()
-      case _ => ()
+  private object ResolvedSource {
+    extension (rs: ResolvedSource) {
+      def cleanup(): Unit = rs match {
+        case ResolvedSource.Git(repoDir, _, _, _) =>
+          val tempDir = repoDir / os.up
+          aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
+          aiskills.cli.TempDirCleanup.unregister()
+        case _ => ()
+      }
     }
   }
 
@@ -163,7 +171,8 @@ object Install {
       val sourceInfo = InstallSourceInfo(
         source = source,
         sourceType = SkillSourceType.Local,
-        localRoot = Some(localPath),
+        repoUrl = none[String],
+        localRoot = localPath.some,
       )
       ResolvedSource.Local(localPath, sourceInfo)
     } else {
@@ -175,7 +184,8 @@ object Install {
       val sourceInfo = InstallSourceInfo(
         source = source,
         sourceType = SkillSourceType.Git,
-        repoUrl = Some(repoUrl),
+        repoUrl = repoUrl.some,
+        localRoot = none[os.Path],
       )
 
       print("Cloning repository...")
@@ -225,7 +235,7 @@ object Install {
         val isProject = targetDir.startsWith(os.pwd)
         installSingleLocalSkill(localPath, targetDir, isProject, options, sourceInfo)
       } else
-        installFromRepo(localPath, targetDir, options, None, sourceInfo)
+        installFromRepo(localPath, targetDir, options, none[String], sourceInfo)
     }
   }
 
@@ -366,13 +376,13 @@ object Install {
             val skillMdPath = skillDir / "SKILL.md"
             val content     = os.read(skillMdPath)
 
-            if !Yaml.hasValidFrontmatter(content) then None
+            if !Yaml.hasValidFrontmatter(content) then none[SkillInfo]
             else {
               val skillName   = skillDir.last
               val description = Yaml.extractYamlField(content, "description")
               val targetPath  = targetDir / skillName
               val size        = getDirectorySize(skillDir)
-              Some(SkillInfo(skillDir, skillName, description, targetPath, size))
+              SkillInfo(skillDir, skillName, description, targetPath, size).some
             }
           }
 
@@ -453,10 +463,10 @@ object Install {
     skillDir: os.Path,
     repoDir: os.Path,
   ): SkillSourceMetadata =
-    if sourceInfo.sourceType == SkillSourceType.Local then buildLocalMetadata(sourceInfo, skillDir)
+    if sourceInfo.sourceType === SkillSourceType.Local then buildLocalMetadata(sourceInfo, skillDir)
     else {
       val subpath           = skillDir.relativeTo(repoDir).toString
-      val normalizedSubpath = if subpath == "." then "" else subpath
+      val normalizedSubpath = if subpath === "." then "" else subpath
       buildGitMetadata(sourceInfo, normalizedSubpath)
     }
 
@@ -465,7 +475,8 @@ object Install {
       source = sourceInfo.source,
       sourceType = SkillSourceType.Git,
       repoUrl = sourceInfo.repoUrl,
-      subpath = Some(subpath),
+      subpath = subpath.some,
+      localPath = none[String],
       installedAt = aiskills.core.utils.isoNow(),
     )
 
@@ -473,7 +484,9 @@ object Install {
     SkillSourceMetadata(
       source = sourceInfo.source,
       sourceType = SkillSourceType.Local,
-      localPath = Some(skillDir.toString),
+      repoUrl = none[String],
+      subpath = none[String],
+      localPath = skillDir.toString.some,
       installedAt = aiskills.core.utils.isoNow(),
     )
 

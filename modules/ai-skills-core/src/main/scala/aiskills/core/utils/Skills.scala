@@ -1,6 +1,7 @@
 package aiskills.core.utils
 
 import aiskills.core.{Agent, Skill, SkillLocation, SkillLocationInfo}
+import cats.syntax.all.*
 
 import scala.util.Try
 
@@ -39,7 +40,7 @@ object Skills {
 
   /** Find a specific skill by name. Returns the first match in priority order. */
   def findSkill(skillName: String): Option[SkillLocationInfo] =
-    findSkill(skillName, prefer = None)
+    findSkill(skillName, prefer = none[Agent])
 
   /** Find a specific skill by name with optional agent preference. */
   def findSkill(skillName: String, prefer: Option[Agent]): Option[SkillLocationInfo] = {
@@ -68,27 +69,24 @@ object Skills {
     }
 
   /** Find all skills installed for a specific agent. */
-  def findSkillsByAgent(agent: Agent, global: Boolean): List[Skill] = {
-    val dir      = Dirs.getSkillsDir(agent, global)
-    val location = if global then SkillLocation.Global else SkillLocation.Project
+  def findSkillsByAgent(agent: Agent, location: SkillLocation): List[Skill] = {
+    val dir = Dirs.getSkillsDir(agent, location)
     if !os.exists(dir) then Nil
     else
       os.list(dir).toList.flatMap { entry =>
-        if !isDirectoryOrSymlinkToDirectory(entry) then None
+        if !isDirectoryOrSymlinkToDirectory(entry) then none[Skill]
         else {
           val skillPath = entry / "SKILL.md"
-          if !os.exists(skillPath) then None
+          if !os.exists(skillPath) then none[Skill]
           else {
             val content = os.read(skillPath)
-            Some(
-              Skill(
-                name = entry.last,
-                description = Yaml.extractYamlField(content, "description"),
-                location = location,
-                agent = agent,
-                path = entry,
-              )
-            )
+            Skill(
+              name = entry.last,
+              description = Yaml.extractYamlField(content, "description"),
+              location = location,
+              agent = agent,
+              path = entry,
+            ).some
           }
         }
       }
