@@ -10,6 +10,7 @@ enum Agent(val projectDirName: String, val globalDirName: String) {
   case Cursor extends Agent(".cursor", ".cursor")
   case Codex extends Agent(".codex", ".codex")
   case Gemini extends Agent(".gemini", ".gemini")
+  case Windsurf extends Agent(".windsurf", ".codeium/windsurf")
   case Copilot extends Agent(".github", ".copilot")
 }
 

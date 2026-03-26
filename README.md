@@ -6,14 +6,15 @@ Built with Scala 3 and Scala Native — compiles to a standalone binary with no 
 
 ## Supported Agents
 
-| Agent                   | Project Dir       | Global Dir           |
-|-------------------------|-------------------|----------------------|
-| **Universal** (default) | `.agents/skills/` | `~/.agents/skills/`  |
-| **Claude**              | `.claude/skills/` | `~/.claude/skills/`  |
-| **Cursor**              | `.cursor/skills/` | `~/.cursor/skills/`  |
-| **Codex**               | `.codex/skills/`  | `~/.codex/skills/`   |
-| **Gemini**              | `.gemini/skills/` | `~/.gemini/skills/`  |
-| **Copilot**             | `.github/skills/` | `~/.copilot/skills/` |
+| Agent                   | Project Dir         | Global Dir                    |
+|-------------------------|---------------------|-------------------------------|
+| **Universal** (default) | `.agents/skills/`   | `~/.agents/skills/`           |
+| **Claude**              | `.claude/skills/`   | `~/.claude/skills/`           |
+| **Cursor**              | `.cursor/skills/`   | `~/.cursor/skills/`           |
+| **Codex**               | `.codex/skills/`    | `~/.codex/skills/`            |
+| **Gemini**              | `.gemini/skills/`   | `~/.gemini/skills/`           |
+| **Windsurf**            | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` |
+| **Copilot**             | `.github/skills/`   | `~/.copilot/skills/`          |
 
 ## Install
 
@@ -145,7 +146,7 @@ Options:
 
 | Flag                   | Description                                                                          |
 |------------------------|--------------------------------------------------------------------------------------|
-| `-a`, `--agent <name>` | Target agent (universal, claude, cursor, codex, gemini, copilot). Default: universal |
+| `-a`, `--agent <name>` | Target agent (universal, claude, cursor, codex, gemini, windsurf, copilot). Default: universal |
 | `--all-agents`         | Install to all agent directories                                                     |
 | `-g`, `--global`       | Install globally instead of project-local                                            |
 | `-y`, `--yes`          | Skip interactive selection, install all skills found                                 |
@@ -237,20 +238,22 @@ Instructions and context for the AI agent...
 
 Skills are searched in the following directories, in priority order:
 
-| Priority | Path                  | Scope              |
-|----------|-----------------------|--------------------|
-| 1        | `./.agents/skills/`   | Project universal  |
-| 2        | `./.claude/skills/`   | Project Claude     |
-| 3        | `./.codex/skills/`    | Project Codex      |
-| 4        | `./.github/skills/`   | Project Copilot    |
-| 5        | `./.cursor/skills/`   | Project Cursor     |
-| 6        | `./.gemini/skills/`   | Project Gemini     |
-| 7        | `~/.agents/skills/`   | Global universal   |
-| 8        | `~/.claude/skills/`   | Global Claude      |
-| 9        | `~/.codex/skills/`    | Global Codex       |
-| 10       | `~/.copilot/skills/`  | Global Copilot     |
-| 11       | `~/.cursor/skills/`   | Global Cursor      |
-| 12       | `~/.gemini/skills/`   | Global Gemini      |
+| Priority | Path                            | Scope              |
+|----------|---------------------------------|--------------------|
+| 1        | `./.agents/skills/`             | Project universal  |
+| 2        | `./.claude/skills/`             | Project Claude     |
+| 3        | `./.codex/skills/`              | Project Codex      |
+| 4        | `./.github/skills/`             | Project Copilot    |
+| 5        | `./.cursor/skills/`             | Project Cursor     |
+| 6        | `./.gemini/skills/`             | Project Gemini     |
+| 7        | `./.windsurf/skills/`           | Project Windsurf   |
+| 8        | `~/.agents/skills/`             | Global universal   |
+| 9        | `~/.claude/skills/`             | Global Claude      |
+| 10       | `~/.codex/skills/`              | Global Codex       |
+| 11       | `~/.copilot/skills/`            | Global Copilot     |
+| 12       | `~/.cursor/skills/`             | Global Cursor      |
+| 13       | `~/.gemini/skills/`             | Global Gemini      |
+| 14       | `~/.codeium/windsurf/skills/`   | Global Windsurf    |
 
 Skills in multiple directories are all shown by `list`. For `read`, the first match by priority is used (override with `--prefer`).
 

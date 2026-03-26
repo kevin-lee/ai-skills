@@ -12,7 +12,7 @@ object Main {
     header = """Universal skills loader for AI coding agents
                |
                |Manage reusable prompt skills for Claude, Cursor, Codex, Gemini,
-               |Copilot, and other AI coding agents. Skills are markdown files
+               |Windsurf, Copilot, and other AI coding agents. Skills are markdown files
                |(SKILL.md) that can be installed from GitHub repos, Git URLs, or
                |local directories.
                |

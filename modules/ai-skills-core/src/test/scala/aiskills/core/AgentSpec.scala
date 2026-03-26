@@ -14,11 +14,11 @@ object AgentSpec extends Properties {
     example("Universal: globalDirName is .agents", testUniversalGlobalDir),
     example("Claude: projectDirName is .claude", testClaudeProjectDir),
     example("Copilot: asymmetric dirs (.github project, .copilot global)", testCopilotAsymmetry),
-    example("all: has 6 agents", testAllCount),
-    example("allNonUniversal: has 5 agents", testAllNonUniversalCount),
+    example("all: has 7 agents", testAllCount),
+    example("allNonUniversal: has 6 agents", testAllNonUniversalCount),
     example("allNonUniversal: excludes Universal", testAllNonUniversalExcludes),
     example("needsAgentsMd: true for Universal and Codex", testNeedsAgentsMd),
-    example("needsAgentsMd: false for Claude, Cursor, Gemini, Copilot", testDoesNotNeedAgentsMd),
+    example("needsAgentsMd: false for Claude, Cursor, Gemini, Windsurf, Copilot", testDoesNotNeedAgentsMd),
     example("Encoder/Decoder: round-trip", testEncoderDecoderRoundTrip),
   )
 
@@ -30,6 +30,7 @@ object AgentSpec extends Properties {
         Agent.fromString("cursor") ==== Some(Agent.Cursor),
         Agent.fromString("codex") ==== Some(Agent.Codex),
         Agent.fromString("gemini") ==== Some(Agent.Gemini),
+        Agent.fromString("windsurf") ==== Some(Agent.Windsurf),
         Agent.fromString("copilot") ==== Some(Agent.Copilot),
       )
     )
@@ -70,10 +71,10 @@ object AgentSpec extends Properties {
     )
 
   private def testAllCount: Result =
-    Agent.all.length ==== 6
+    Agent.all.length ==== 7
 
   private def testAllNonUniversalCount: Result =
-    Agent.allNonUniversal.length ==== 5
+    Agent.allNonUniversal.length ==== 6
 
   private def testAllNonUniversalExcludes: Result =
     Result.assert(!Agent.allNonUniversal.contains(Agent.Universal))
@@ -92,6 +93,7 @@ object AgentSpec extends Properties {
         Result.assert(!Agent.needsAgentsMd(Agent.Claude)),
         Result.assert(!Agent.needsAgentsMd(Agent.Cursor)),
         Result.assert(!Agent.needsAgentsMd(Agent.Gemini)),
+        Result.assert(!Agent.needsAgentsMd(Agent.Windsurf)),
         Result.assert(!Agent.needsAgentsMd(Agent.Copilot)),
       )
     )

@@ -16,7 +16,9 @@ object DirsSpec extends Properties {
     example("getSkillsDir: project Cursor uses .cursor", testProjectCursor),
     example("getSkillsDir: project Codex uses .codex", testProjectCodex),
     example("getSkillsDir: project Gemini uses .gemini", testProjectGemini),
-    example("getSearchDirs: returns 12 dirs", testSearchDirsCount),
+    example("getSkillsDir: project Windsurf uses .windsurf", testProjectWindsurf),
+    example("getSkillsDir: global Windsurf uses .codeium/windsurf (asymmetric)", testGlobalWindsurf),
+    example("getSearchDirs: returns 14 dirs", testSearchDirsCount),
     example("getSearchDirs: correct priority order", testSearchDirsOrder),
     example("getSearchDirs: first is project universal", testSearchDirsFirst),
     example("getSearchDirs: prefer reorders correctly", testSearchDirsPrefer),
@@ -50,17 +52,23 @@ object DirsSpec extends Properties {
   private def testProjectGemini: Result =
     Dirs.getSkillsDir(Agent.Gemini, global = false) ==== (os.pwd / ".gemini" / "skills")
 
+  private def testProjectWindsurf: Result =
+    Dirs.getSkillsDir(Agent.Windsurf, global = false) ==== (os.pwd / ".windsurf" / "skills")
+
+  private def testGlobalWindsurf: Result =
+    Dirs.getSkillsDir(Agent.Windsurf, global = true) ==== (os.home / ".codeium" / "windsurf" / "skills")
+
   private def testSearchDirsCount: Result = {
     val dirs = Dirs.getSearchDirs()
-    dirs.length ==== 12
+    dirs.length ==== 14
   }
 
   private def testSearchDirsOrder: Result = {
     val dirs = Dirs.getSearchDirs()
     // 1. Project universal
-    // 2-6. Project agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini)
-    // 7. Global universal
-    // 8-12. Global agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini)
+    // 2-7. Project agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini, Windsurf)
+    // 8. Global universal
+    // 9-14. Global agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini, Windsurf)
     Result.all(
       List(
         // Project universal
@@ -71,18 +79,20 @@ object DirsSpec extends Properties {
         dirs(3)._2 ==== Agent.Copilot,
         dirs(4)._2 ==== Agent.Cursor,
         dirs(5)._2 ==== Agent.Gemini,
+        dirs(6)._2 ==== Agent.Windsurf,
         // All project dirs are Project location
-        Result.assert(dirs.take(6).forall(_._3 == SkillLocation.Project)),
+        Result.assert(dirs.take(7).forall(_._3 == SkillLocation.Project)),
         // Global universal
-        dirs(6) ==== ((os.home / ".agents" / "skills", Agent.Universal, SkillLocation.Global)),
+        dirs(7) ==== ((os.home / ".agents" / "skills", Agent.Universal, SkillLocation.Global)),
         // Global agent-specific (alphabetical)
-        dirs(7)._2 ==== Agent.Claude,
-        dirs(8)._2 ==== Agent.Codex,
-        dirs(9)._2 ==== Agent.Copilot,
-        dirs(10)._2 ==== Agent.Cursor,
-        dirs(11)._2 ==== Agent.Gemini,
+        dirs(8)._2 ==== Agent.Claude,
+        dirs(9)._2 ==== Agent.Codex,
+        dirs(10)._2 ==== Agent.Copilot,
+        dirs(11)._2 ==== Agent.Cursor,
+        dirs(12)._2 ==== Agent.Gemini,
+        dirs(13)._2 ==== Agent.Windsurf,
         // All global dirs are Global location
-        Result.assert(dirs.drop(6).forall(_._3 == SkillLocation.Global)),
+        Result.assert(dirs.drop(7).forall(_._3 == SkillLocation.Global)),
       )
     )
   }
@@ -106,8 +116,8 @@ object DirsSpec extends Properties {
     Result.all(
       List(
         firstAgent ==== Agent.Cursor,
-        // Should still have 12 dirs
-        dirs.length ==== 12,
+        // Should still have 14 dirs
+        dirs.length ==== 14,
       )
     )
   }
