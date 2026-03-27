@@ -4,6 +4,7 @@ import cats.syntax.all.*
 import com.monovore.decline.*
 import aiskills.core.{Agent, InstallOptions, ReadOptions, SyncOptions}
 import aiskills.cli.commands.*
+import aiskills.info.AiSkillsInfo
 
 object Main {
 
@@ -25,7 +26,7 @@ object Main {
                |  aiskills remove commit                        # Remove a skill
                |  aiskills manage                               # Interactive removal
                |""".stripMargin,
-    version = "0.1.1",
+    version = AiSkillsInfo.version,
     main = {
 
       val listCommand = Opts.subcommand(
