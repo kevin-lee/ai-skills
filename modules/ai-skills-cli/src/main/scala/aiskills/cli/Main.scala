@@ -48,16 +48,16 @@ object Main {
           |
           |Accepts GitHub shorthand (owner/repo), a specific skill path
           |(owner/repo/skill-name), a full Git URL (HTTPS or SSH), or a local
-          |directory path. By default skills are installed into the project-local
-          |.agents/skills directory for the universal agent.
+          |directory path. If no --agent is given, an interactive prompt lets
+          |you choose the target agent(s) and location.
           |
           |Examples:
-          |  aiskills install anthropics/skills                     # All skills from a GitHub repo (project, universal)
-          |  aiskills install anthropics/skills/commit              # Single skill by path
-          |  aiskills install owner/repo --global                   # Install globally (~/.agents/skills)
-          |  aiskills install owner/repo --agent universal          # Install into .agents/skills (default)
-          |  aiskills install owner/repo --agent claude             # Install into .claude/skills
-          |  aiskills install owner/repo --agent cursor             # Install into .cursor/skills
+          |  aiskills install anthropics/skills                     # Interactive agent & location selection
+          |  aiskills install anthropics/skills/commit              # Single skill by path (interactive)
+          |  aiskills install owner/repo --global                   # Install globally (interactive agent selection)
+          |  aiskills install owner/repo --agent universal          # Install into .agents/skills (project)
+          |  aiskills install owner/repo --agent claude             # Install into .claude/skills (project)
+          |  aiskills install owner/repo --agent cursor             # Install into .cursor/skills (project)
           |  aiskills install owner/repo --agent claude --global    # Install globally (~/.claude/skills)
           |  aiskills install owner/repo --all-agents               # Install into all agent directories
           |  aiskills install owner/repo --all-agents --global      # Install globally for all agents
@@ -76,21 +76,23 @@ object Main {
             s"Target agent (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
             short = "a",
           )
-          .withDefault("universal")
+          .orNone
         val allAgents = Opts.flag("all-agents", "Install to all agent directories").orFalse
         val yes       = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
         (source, global, agent, allAgents, yes).mapN { (src, g, a, all, y) =>
-          Agent.fromString(a) match {
-            case Some(agentEnum) =>
-              Install.installSkill(src, InstallOptions(global = g, agent = agentEnum, allAgents = all, yes = y))
-            case None =>
-              System
-                .err
-                .println(
-                  s"Error: Invalid agent '$a'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
-                )
-              sys.exit(1)
+          val agentOpt: Option[Agent] = a.flatMap { agentStr =>
+            Agent.fromString(agentStr) match {
+              case Some(agentEnum) => Some(agentEnum)
+              case None =>
+                System
+                  .err
+                  .println(
+                    s"Error: Invalid agent '$agentStr'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                  )
+                sys.exit(1)
+            }
           }
+          Install.installSkill(src, InstallOptions(global = g, agent = agentOpt, allAgents = all, yes = y))
         }
       }
 

@@ -60,11 +60,78 @@ object Install {
     else if bytes < 1024 * 1024 then f"${bytes / 1024.0}%.1fKB"
     else f"${bytes / (1024.0 * 1024.0)}%.1fMB"
 
+  /** Resolve agents and location from options, prompting interactively when not specified. */
+  private def resolveAgentsAndLocation(options: InstallOptions): (List[Agent], Boolean) = {
+    if options.allAgents then (Agent.all, !options.global)
+    else
+      options.agent match {
+        case Some(a) => (List(a), !options.global)
+        case None =>
+          val agents    = promptForAgents()
+          val isProject = if options.global then false else promptForLocation()
+          (agents, isProject)
+      }
+  }
+
+  private def promptForAgents(): List[Agent] = {
+    val agentLabels = Agent.all.map(_.toString)
+
+    aiskills.cli.SigintHandler.install()
+    val result = Prompts.sync.use { prompts =>
+      prompts.multiChoiceNoneSelected("Select target agent(s)", agentLabels) match {
+        case Completion.Finished(selectedLabels) =>
+          val selected = Agent.all.filter(a => selectedLabels.contains(a.toString))
+          if selected.isEmpty then {
+            println("No agents selected. Installation cancelled.".yellow)
+            Left(0)
+          } else Right(selected)
+        case Completion.Fail(CompletionError.Interrupted) =>
+          println("\n\nCancelled by user".yellow)
+          Left(0)
+        case Completion.Fail(CompletionError.Error(msg)) =>
+          System.err.println(s"Error: $msg")
+          Left(1)
+      }
+    }
+    result match {
+      case Left(code) => throw SkillInstallException(code) // scalafix:ok DisableSyntax.throw
+      case Right(agents) => agents
+    }
+  }
+
+  private def promptForLocation(): Boolean = {
+    val locationLabels = List("project", "global")
+
+    aiskills.cli.SigintHandler.install()
+    val result = Prompts.sync.use { prompts =>
+      prompts.multiChoiceNoneSelected("Select install location", locationLabels) match {
+        case Completion.Finished(selectedLabels) =>
+          selectedLabels.headOption match {
+            case Some(label) => Right(label === "project")
+            case None =>
+              println("No location selected. Defaulting to project.".yellow)
+              Right(true)
+          }
+        case Completion.Fail(CompletionError.Interrupted) =>
+          println("\n\nCancelled by user".yellow)
+          Left(0)
+        case Completion.Fail(CompletionError.Error(msg)) =>
+          System.err.println(s"Error: $msg")
+          Left(1)
+      }
+    }
+    result match {
+      case Left(code) => throw SkillInstallException(code) // scalafix:ok DisableSyntax.throw
+      case Right(isProject) => isProject
+    }
+  }
+
   /** Install skill from local path, GitHub, or Git URL. */
   def installSkill(source: String, options: InstallOptions): Unit = {
     aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
-    val agents    = if options.allAgents then Agent.all else List(options.agent)
-    val isProject = !options.global
+
+    // Resolve agents and location (interactive if not specified) before cloning
+    val (agents, isProject) = resolveAgentsAndLocation(options)
 
     // Resolve source once
     val resolvedSource = resolveSource(source)
@@ -87,11 +154,8 @@ object Install {
         println(s"Installing from: ${source.cyan}")
         println(s"Location: $location")
         if agents.length <= 1 then {
-          if isProject then println(
-            s"Default install is project-local (./$folder). Use --global for ~/$globalFolder.".dim
-          )
-          else
-            println(s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim)
+          if !isProject then println(s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim)
+          else ()
         } else ()
         println()
 
