@@ -8,6 +8,19 @@ import extras.scala.io.syntax.color.*
 
 object Sync {
 
+  private enum OverwriteChoice {
+    case Yes
+    case No
+    case YesToAll
+    case NoToAll
+  }
+
+  private enum BulkDecision {
+    case Undecided
+    case OverwriteAll
+    case SkipAll
+  }
+
   /** Sync skills between agent directories. */
   def syncSkills(options: SyncOptions): Unit =
     (options.from, options.to, options.skillName, options.allAgents) match {
@@ -108,6 +121,40 @@ object Sync {
     }
   }
 
+  private def askOverwriteChoice(
+    skillName: String,
+    toAgent: Agent,
+    location: SkillLocation,
+  ): Either[Int, OverwriteChoice] = {
+    val options = List(
+      "Yes          — Overwrite this skill",
+      "No           — Skip this skill",
+      "Yes to all   — Overwrite all remaining conflicts",
+      "No to all    — Skip all remaining conflicts",
+    )
+    aiskills.cli.SigintHandler.install()
+    Prompts.sync.use { prompts =>
+      println(
+        s"\u26a0 All existing files and folders in '$skillName' will be removed if you choose to overwrite.".yellow
+      )
+      prompts.singleChoice(
+        s"Skill '$skillName' already exists in ${toAgent.toString} (${location.toString.toLowerCase}). What would you like to do?".yellow,
+        options,
+      ) match {
+        case Completion.Finished(selected) =>
+          if selected.startsWith("Yes to all") then OverwriteChoice.YesToAll.asRight[Int]
+          else if selected.startsWith("No to all") then OverwriteChoice.NoToAll.asRight[Int]
+          else if selected.startsWith("Yes") then OverwriteChoice.Yes.asRight[Int]
+          else OverwriteChoice.No.asRight[Int]
+        case Completion.Fail(CompletionError.Interrupted) =>
+          println("\n\nCancelled by user".yellow)
+          0.asLeft[OverwriteChoice]
+        case Completion.Fail(CompletionError.Error(_)) =>
+          OverwriteChoice.No.asRight[Int]
+      }
+    }
+  }
+
   private def syncAllSkills(from: Agent, to: Agent, yes: Boolean): Unit = {
     if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
     else {
@@ -118,24 +165,58 @@ object Sync {
       else {
         println(s"Syncing ${sourceSkills.length} skill(s) from ${from.toString} to ${to.toString}...".dim)
 
-        val synced = sourceSkills.count { s =>
-          val targetDir  = Dirs.getSkillsDir(to, s.location)
-          val targetPath = targetDir / s.name
+        val (synced, _) =
+          sourceSkills.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
+            case ((count, bulk), s) =>
+              val targetDir  = Dirs.getSkillsDir(to, s.location)
+              val targetPath = targetDir / s.name
 
-          if os.exists(targetPath) && !yes then {
-            println(s"Skipped: ${s.name} (already exists in ${to.toString}, use --yes to overwrite)".dim)
-            false
-          } else {
-            if os.exists(targetPath) then {
-              println(s"Overwriting: ${s.name} (all existing files and folders will be removed)".dim)
-              os.remove.all(targetPath)
-            } else ()
-            os.makeDir.all(targetDir)
-            os.copy(s.path, targetPath, replaceExisting = true)
-            println(s"\u2705 Synced: ${s.name}".green)
-            true
+              def doSync(): Int = {
+                if os.exists(targetPath) then {
+                  println(s"Overwriting: ${s.name} (all existing files and folders will be removed)".dim)
+                  os.remove.all(targetPath)
+                } else ()
+                os.makeDir.all(targetDir)
+                os.copy(s.path, targetPath, replaceExisting = true)
+                println(s"\u2705 Synced: ${s.name}".green)
+                count + 1
+              }
+
+              if !os.exists(targetPath) then {
+                os.makeDir.all(targetDir)
+                os.copy(s.path, targetPath, replaceExisting = true)
+                println(s"\u2705 Synced: ${s.name}".green)
+                (count + 1, bulk)
+              } else if yes then (doSync(), bulk)
+              else
+                bulk match {
+                  case BulkDecision.OverwriteAll =>
+                    (doSync(), bulk)
+
+                  case BulkDecision.SkipAll =>
+                    println(s"Skipped: ${s.name}".yellow)
+                    (count, bulk)
+
+                  case BulkDecision.Undecided =>
+                    askOverwriteChoice(s.name, to, s.location) match {
+                      case Left(code) => sys.exit(code)
+
+                      case Right(OverwriteChoice.Yes) =>
+                        (doSync(), BulkDecision.Undecided)
+
+                      case Right(OverwriteChoice.No) =>
+                        println(s"Skipped: ${s.name}".yellow)
+                        (count, BulkDecision.Undecided)
+
+                      case Right(OverwriteChoice.YesToAll) =>
+                        (doSync(), BulkDecision.OverwriteAll)
+
+                      case Right(OverwriteChoice.NoToAll) =>
+                        println(s"Skipped: ${s.name}".yellow)
+                        (count, BulkDecision.SkipAll)
+                    }
+                }
           }
-        }
 
         println(s"\n\u2705 Sync complete: $synced skill(s) synced from ${from.toString} to ${to.toString}".green)
 
