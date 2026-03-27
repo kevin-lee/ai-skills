@@ -135,7 +135,7 @@ object Main {
           |""".stripMargin,
       ) {
         Opts.arguments[String](metavar = "skill-names").orEmpty.map { names =>
-          Update.updateSkills(names.toList)
+          Update.updateSkills(names)
         }
       }
 
