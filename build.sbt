@@ -2,7 +2,6 @@ import scala.scalanative.build.*
 
 ThisBuild / scalaVersion := props.ScalaVersion
 ThisBuild / organization := props.Org
-ThisBuild / version := props.ProjectVersion
 
 lazy val aiSkills = project
   .in(file("."))
@@ -19,6 +18,15 @@ lazy val aiSkills = project
   .aggregate(core, cli)
 
 lazy val core = module("core")
+  .enablePlugins(BuildInfoPlugin)
+  .settings(
+    /* Build Info { */
+    buildInfoKeys := List[BuildInfoKey](name, version, scalaVersion, sbtVersion),
+    buildInfoObject := "AiSkillsInfo",
+    buildInfoPackage := "aiskills.info",
+    buildInfoOptions += BuildInfoOption.ToJson,
+    /* } Build Info */
+  )
   .settings(
     libraryDependencies ++= Seq(
       libs.osLib.value,
@@ -65,8 +73,6 @@ lazy val props = new {
 
   val Org     = "io.kevinlee"
   val OrgName = "Kevin's Code"
-
-  val ProjectVersion = "0.1.1"
 
   val OsLibVersion = "0.11.8"
 
