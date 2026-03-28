@@ -1,6 +1,7 @@
 package aiskills.core.utils
 
 import aiskills.core.{Agent, Skill, SkillLocation}
+import cats.syntax.all.*
 
 import scala.util.matching.Regex
 import scala.xml.{Elem, PrettyPrinter}
@@ -96,17 +97,14 @@ object AgentsMd {
     val xmlRegex          = """<skills[_-]system[^>]*>[\s\S]*?</skills[_-]system>""".r
 
     if content.contains(xmlMarkerStart) || content
-      .contains(xmlMarkerStartOld) then xmlRegex.replaceFirstIn(content, "<!-- Skills section removed -->")
+      .contains(xmlMarkerStartOld) then xmlRegex.replaceFirstIn(content, "").replaceAll("""\n{3,}""", "\n\n").strip
     else {
       val htmlStart = "<!-- SKILLS_TABLE_START -->"
       val htmlEnd   = "<!-- SKILLS_TABLE_END -->"
 
       if content.contains(htmlStart) then {
         val htmlRegex = s"""(?s)${Regex.quote(htmlStart)}[\\s\\S]*?${Regex.quote(htmlEnd)}""".r
-        htmlRegex.replaceFirstIn(
-          content,
-          Regex.quoteReplacement(s"$htmlStart\n<!-- Skills section removed -->\n$htmlEnd"),
-        )
+        htmlRegex.replaceFirstIn(content, "").replaceAll("""\n{3,}""", "\n\n").strip
       } else
         content
     }
@@ -119,7 +117,7 @@ object AgentsMd {
         case SkillLocation.Global => os.home / "AGENTS.md"
         case SkillLocation.Project => os.pwd / "AGENTS.md"
       }
-      val skills     = Skills.findAllSkills()
+      val skills     = Skills.findAllSkills().filter(_.location === location)
       if skills.nonEmpty then {
         val xml = generateSkillsXml(skills)
         if os.exists(outputPath) then {
@@ -128,6 +126,10 @@ object AgentsMd {
           os.write.over(outputPath, updated)
         } else
           os.write(outputPath, s"# AGENTS\n\n$xml\n")
+      } else if os.exists(outputPath) then {
+        val content = os.read(outputPath)
+        val updated = removeSkillsSection(content)
+        os.write.over(outputPath, updated)
       } else ()
     } else ()
   }

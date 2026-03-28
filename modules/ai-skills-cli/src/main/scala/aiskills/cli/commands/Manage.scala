@@ -1,7 +1,7 @@
 package aiskills.cli.commands
 
 import aiskills.core.SkillLocation
-import aiskills.core.utils.Skills
+import aiskills.core.utils.{AgentsMd, Skills}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 import cue4s.*
@@ -32,13 +32,17 @@ object Manage {
               val selectedIndices = selectedLabels.flatMap { label =>
                 labels.zipWithIndex.find(_._1 === label).map(_._2)
               }
-              for idx <- selectedIndices do {
-                val skill = sorted(idx)
+              val removedSkills   = selectedIndices.map(sorted(_))
+              for skill <- removedSkills do {
                 os.remove.all(skill.path)
                 println(
                   s"\u2705 Removed: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString})".green
                 )
               }
+
+              val agentLocationPairs = removedSkills.map(s => (s.agent, s.location)).distinct
+              for (agent, location) <- agentLocationPairs do AgentsMd.updateAgentsMdForAgent(agent, location)
+
               println(s"\n\u2705 Removed ${selectedIndices.length} skill(s)".green)
             }
             Right(())

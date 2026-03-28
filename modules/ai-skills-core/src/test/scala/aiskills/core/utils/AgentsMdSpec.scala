@@ -23,6 +23,7 @@ object AgentsMdSpec extends Properties {
     example("removeSkillsSection: removes old skills_system format", testRemoveOldFormat),
     example("parseCurrentSkills: parses skills from kebab-case tags", testParseKebabCase),
     example("generateSkillsXml: includes agent element", testAgentElement),
+    example("removeSkillsSection: cleans up generated skills XML after last skill removal", testRemoveAfterLastSkill),
   )
 
   private val sampleSkills = List(
@@ -278,6 +279,24 @@ object AgentsMdSpec extends Properties {
       List(
         Result.assert(xml.contains("<agent>claude</agent>")),
         Result.assert(xml.contains("<agent>universal</agent>")),
+      )
+    )
+  }
+
+  private def testRemoveAfterLastSkill: Result = {
+    val skillsXml       = AgentsMd.generateSkillsXml(
+      List(Skill("pdf", "PDF manipulation", SkillLocation.Project, Agent.Claude, os.pwd / "path" / "to" / "pdf"))
+    )
+    val agentsMdContent = s"# AGENTS\n\n$skillsXml\n\nSome other content."
+    val cleaned         = AgentsMd.removeSkillsSection(agentsMdContent)
+    Result.all(
+      List(
+        Result.assert(!cleaned.contains("<skills-system")),
+        Result.assert(!cleaned.contains("<available-skills>")),
+        Result.assert(!cleaned.contains("<name>pdf</name>")),
+        Result.assert(!cleaned.contains("<!-- Skills section removed -->")),
+        Result.assert(cleaned.contains("Some other content.")),
+        Result.assert(cleaned.contains("# AGENTS")),
       )
     )
   }
