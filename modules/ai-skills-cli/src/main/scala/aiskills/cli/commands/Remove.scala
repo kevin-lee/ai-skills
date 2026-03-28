@@ -1,6 +1,6 @@
 package aiskills.cli.commands
 
-import aiskills.core.utils.Skills
+import aiskills.core.utils.{AgentsMd, Skills}
 
 object Remove {
 
@@ -14,6 +14,8 @@ object Remove {
     }
 
     os.remove.all(skill.baseDir)
+
+    AgentsMd.updateAgentsMdForAgent(skill.agent, skill.location)
 
     val scope     = skill.location.toString.toLowerCase
     val agentName = skill.agent.toString
