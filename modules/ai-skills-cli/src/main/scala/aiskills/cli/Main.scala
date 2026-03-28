@@ -2,7 +2,7 @@ package aiskills.cli
 
 import cats.syntax.all.*
 import com.monovore.decline.*
-import aiskills.core.{Agent, InstallOptions, ReadOptions, SyncOptions}
+import aiskills.core.{Agent, InstallOptions, ListOptions, ReadOptions, SyncOptions}
 import aiskills.cli.commands.*
 import aiskills.info.AiSkillsInfo
 
@@ -31,16 +31,55 @@ object Main {
 
       val listCommand = Opts.subcommand(
         "list",
-        """List all installed skills
+        """List installed skills
           |
-          |Shows all skills across all agents and locations (project + global),
-          |grouped by agent with a summary count.
+          |Shows installed skills with optional filtering by location and agent.
+          |Without flags, an interactive prompt lets you choose scope and agents.
           |
           |Examples:
-          |  aiskills list                  # Show all installed skills
+          |  aiskills list                              # Interactive scope & agent selection
+          |  aiskills list --project                    # Project skills, all agents
+          |  aiskills list --global                     # Global skills, all agents
+          |  aiskills list --agent claude               # Both scopes, Claude only
+          |  aiskills list --agent claude,cursor         # Both scopes, Claude + Cursor
+          |  aiskills list --agent claude --project      # Project skills, Claude only
+          |  aiskills list --all-agents                  # Both scopes, all agents (no prompt)
+          |  aiskills list --all-agents --global         # Global skills, all agents
           |""".stripMargin,
       ) {
-        Opts.unit.map(_ => ListCmd.listSkills())
+        val project   = Opts.flag("project", "Show project skills only", short = "p").orFalse
+        val global    = Opts.flag("global", "Show global skills only", short = "g").orFalse
+        val agent     = Opts
+          .option[String](
+            "agent",
+            s"Filter by agent (comma-separated: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
+            short = "a",
+          )
+          .orNone
+        val allAgents = Opts.flag("all-agents", "Show skills for all agents (skip agent prompt)").orFalse
+        (project, global, agent, allAgents).mapN { (p, g, a, all) =>
+          if p && g then {
+            System.err.println("Error: Cannot use both --project and --global. Omit both to show all.")
+            sys.exit(1)
+          } else ()
+          if a.isDefined && all then {
+            System.err.println("Error: Cannot use both --agent and --all-agents. Use one or the other.")
+            sys.exit(1)
+          } else ()
+          val parsedAgents: Option[List[Agent]] = a.map { agentStr =>
+            aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
+              case Right(agents) => agents
+              case Left(invalid) =>
+                System
+                  .err
+                  .println(
+                    s"Error: Invalid agent '$invalid'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                  )
+                sys.exit(1)
+            }
+          }
+          ListCmd.listSkills(ListOptions(project = p, global = g, agent = parsedAgents, allAgents = all))
+        }
       }
 
       val installCommand = Opts.subcommand(
