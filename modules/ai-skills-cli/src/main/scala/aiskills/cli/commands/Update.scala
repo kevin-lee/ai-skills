@@ -5,6 +5,8 @@ import aiskills.core.utils.{SkillMetadata, SkillNames, Skills}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
+import just.spinner.*
+
 import scala.util.{Failure, Success, Try}
 
 object Update {
@@ -89,13 +91,20 @@ object Update {
                     os.makeDir.all(tempDir)
                     aiskills.cli.TempDirCleanup.register(tempDir)
                     try {
-                      print(s"Updating ${skill.name}...")
+                      val spinner = Spinner.createDefaultSideEffect(
+                        SpinnerConfig
+                          .default
+                          .withText(s"Updating ${skill.name}...")
+                          .withColor(Color.cyan)
+                          .withIndent(2),
+                      )
+                      val _       = spinner.start()
                       Try {
                         os.proc("git", "clone", "--depth", "1", "--quiet", repoUrl, (tempDir / "repo").toString)
                           .call(stderr = os.Pipe)
                       } match {
                         case Failure(ex) =>
-                          println(s" failed")
+                          val _   = spinner.fail(Some(s"Clone failed: ${skill.name}"))
                           val msg = ex.getMessage
                           if msg.nonEmpty then println(msg.dim) else ()
                           println(s"Skipped: ${skill.name} (git clone failed)".yellow)
@@ -108,11 +117,11 @@ object Update {
                           val sourceDir = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
 
                           if !os.exists(sourceDir / "SKILL.md") then {
-                            println(s" failed")
+                            val _ = spinner.fail(Some(s"Failed: ${skill.name}"))
                             println(
                               s"Skipped: ${skill.name} (SKILL.md not found in repo at ${subpath.getOrElse(".")})".yellow
                             )
-                            missingRepoSkillFile += ((skill.name, subpath.getOrElse(".")))
+                            missingRepoSkillFile += skill.name -> subpath.getOrElse(".")
                             (upd, skp + 1)
                           } else {
                             updateSkillFromDir(skill.path, sourceDir)
@@ -120,8 +129,7 @@ object Update {
                               skill.path,
                               meta.copy(installedAt = aiskills.core.utils.isoNow()),
                             )
-                            println(s" done")
-                            println(s"\u2705 Updated: ${skill.name} [${skill.agent.toString}]".green)
+                            val _ = spinner.succeed(Some(s"Updated: ${skill.name} [${skill.agent.toString}]"))
                             (upd + 1, skp)
                           }
                       }
