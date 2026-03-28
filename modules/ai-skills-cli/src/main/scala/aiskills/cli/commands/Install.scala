@@ -6,6 +6,8 @@ import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 import cue4s.*
 
+import OverwritePrompt.{BulkDecision, OverwriteChoice}
+
 import scala.util.{Failure, Success, Try}
 
 object Install {
@@ -497,26 +499,88 @@ object Install {
     if skillsToInstall.nonEmpty then {
       val isProject = targetDir.startsWith(os.pwd)
 
-      val installedCount = skillsToInstall.count { info =>
-        if warnIfConflict(info.skillName, info.targetPath, isProject, options.yes) then {
-          os.makeDir.all(targetDir)
-          if !isPathInside(info.targetPath, targetDir) then {
-            System.err.println("Security error: Installation path outside target directory".red)
-            false
-          } else {
-            os.copy(info.skillDir, info.targetPath, replaceExisting = true)
-            SkillMetadata.writeSkillMetadata(
-              info.targetPath,
-              buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
-            )
-            println(s"\u2705 Installed: ${info.skillName}".green)
-            true
-          }
-        } else {
-          println(s"Skipped: ${info.skillName}".yellow)
-          false
+      val (installedCount, _) =
+        skillsToInstall.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
+          case ((count, bulk), info) =>
+            def doInstall(): Int = {
+              if os.exists(info.targetPath) then {
+                println(s"Overwriting: ${info.skillName} (all existing files and folders will be removed)".dim)
+                os.remove.all(info.targetPath)
+              } else ()
+              os.makeDir.all(targetDir)
+              if !isPathInside(info.targetPath, targetDir) then {
+                System.err.println("Security error: Installation path outside target directory".red)
+                count
+              } else {
+                os.copy(info.skillDir, info.targetPath, replaceExisting = true)
+                SkillMetadata.writeSkillMetadata(
+                  info.targetPath,
+                  buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
+                )
+                println(s"\u2705 Installed: ${info.skillName}".green)
+                count + 1
+              }
+            }
+
+            if !os.exists(info.targetPath) then {
+              // No conflict — check marketplace warning and install
+              if !isProject && MarketplaceSkills.anthropicMarketplaceSkills.contains(info.skillName) then {
+                System
+                  .err
+                  .println(
+                    s"\n\u26a0\ufe0f  Warning: '${info.skillName}' matches an Anthropic marketplace skill".yellow
+                  )
+                System.err.println("   Installing globally may conflict with Claude Code plugins.".dim)
+                System.err.println("   If you re-enable Claude plugins, this will be overwritten.".dim)
+                System.err.println("   Recommend: Use --project flag for conflict-free installation.\n".dim)
+              } else ()
+              os.makeDir.all(targetDir)
+              if !isPathInside(info.targetPath, targetDir) then {
+                System.err.println("Security error: Installation path outside target directory".red)
+                (count, bulk)
+              } else {
+                os.copy(info.skillDir, info.targetPath, replaceExisting = true)
+                SkillMetadata.writeSkillMetadata(
+                  info.targetPath,
+                  buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
+                )
+                println(s"\u2705 Installed: ${info.skillName}".green)
+                (count + 1, bulk)
+              }
+            } else if options.yes then (doInstall(), bulk)
+            else
+              bulk match {
+                case BulkDecision.OverwriteAll =>
+                  (doInstall(), bulk)
+
+                case BulkDecision.SkipAll =>
+                  println(s"Skipped: ${info.skillName}".yellow)
+                  (count, bulk)
+
+                case BulkDecision.Undecided =>
+                  OverwritePrompt.askOverwriteChoice(
+                    info.skillName,
+                    s"Skill '${info.skillName}' already exists. What would you like to do?",
+                  ) match {
+                    case Left(code) =>
+                      throw SkillInstallException(code) // scalafix:ok DisableSyntax.throw
+
+                    case Right(OverwriteChoice.Yes) =>
+                      (doInstall(), BulkDecision.Undecided)
+
+                    case Right(OverwriteChoice.No) =>
+                      println(s"Skipped: ${info.skillName}".yellow)
+                      (count, BulkDecision.Undecided)
+
+                    case Right(OverwriteChoice.YesToAll) =>
+                      (doInstall(), BulkDecision.OverwriteAll)
+
+                    case Right(OverwriteChoice.NoToAll) =>
+                      println(s"Skipped: ${info.skillName}".yellow)
+                      (count, BulkDecision.SkipAll)
+                  }
+              }
         }
-      }
 
       println(s"\n\u2705 Installation complete: $installedCount skill(s) installed".green)
     } else ()
