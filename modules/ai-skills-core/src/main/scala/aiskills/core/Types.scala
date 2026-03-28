@@ -86,6 +86,13 @@ final case class ReadOptions(
   prefer: Option[Agent],
 )
 
+final case class ListOptions(
+  project: Boolean,
+  global: Boolean,
+  agent: Option[List[Agent]],
+  allAgents: Boolean,
+)
+
 final case class SkillMetadata(
   name: String,
   description: String,
