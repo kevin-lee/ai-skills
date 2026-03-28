@@ -6,20 +6,9 @@ import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
 
+import OverwritePrompt.{BulkDecision, OverwriteChoice}
+
 object Sync {
-
-  private enum OverwriteChoice {
-    case Yes
-    case No
-    case YesToAll
-    case NoToAll
-  }
-
-  private enum BulkDecision {
-    case Undecided
-    case OverwriteAll
-    case SkipAll
-  }
 
   /** Sync skills between agent directories. */
   def syncSkills(options: SyncOptions): Unit =
@@ -121,40 +110,6 @@ object Sync {
     }
   }
 
-  private def askOverwriteChoice(
-    skillName: String,
-    toAgent: Agent,
-    location: SkillLocation,
-  ): Either[Int, OverwriteChoice] = {
-    val options = List(
-      "Yes          — Overwrite this skill",
-      "No           — Skip this skill",
-      "Yes to all   — Overwrite all remaining conflicts",
-      "No to all    — Skip all remaining conflicts",
-    )
-    aiskills.cli.SigintHandler.install()
-    Prompts.sync.use { prompts =>
-      println(
-        s"\u26a0 All existing files and folders in '$skillName' will be removed if you choose to overwrite.".yellow
-      )
-      prompts.singleChoice(
-        s"Skill '$skillName' already exists in ${toAgent.toString} (${location.toString.toLowerCase}). What would you like to do?".yellow,
-        options,
-      ) match {
-        case Completion.Finished(selected) =>
-          if selected.startsWith("Yes to all") then OverwriteChoice.YesToAll.asRight[Int]
-          else if selected.startsWith("No to all") then OverwriteChoice.NoToAll.asRight[Int]
-          else if selected.startsWith("Yes") then OverwriteChoice.Yes.asRight[Int]
-          else OverwriteChoice.No.asRight[Int]
-        case Completion.Fail(CompletionError.Interrupted) =>
-          println("\n\nCancelled by user".yellow)
-          0.asLeft[OverwriteChoice]
-        case Completion.Fail(CompletionError.Error(_)) =>
-          OverwriteChoice.No.asRight[Int]
-      }
-    }
-  }
-
   private def syncAllSkills(from: Agent, to: Agent, yes: Boolean): Unit = {
     if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
     else {
@@ -198,7 +153,10 @@ object Sync {
                     (count, bulk)
 
                   case BulkDecision.Undecided =>
-                    askOverwriteChoice(s.name, to, s.location) match {
+                    OverwritePrompt.askOverwriteChoice(
+                      s.name,
+                      s"Skill '${s.name}' already exists in ${to.toString} (${s.location.toString.toLowerCase}). What would you like to do?",
+                    ) match {
                       case Left(code) => sys.exit(code)
 
                       case Right(OverwriteChoice.Yes) =>
