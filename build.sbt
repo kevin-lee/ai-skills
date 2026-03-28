@@ -47,6 +47,7 @@ lazy val cli = module("cli")
       libs.decline.value,
       libs.cue4s.value,
       libs.extrasScalaIo.value,
+      libs.justSpinnerCore.value,
       libs.tests.hedgehogCore.value,
       libs.tests.hedgehogRunner.value,
       libs.tests.hedgehogSbt.value,
@@ -90,6 +91,8 @@ lazy val props = new {
 
   val ScalaXmlVersion = "2.4.0"
 
+  val JustSpinnerVersion = "0.1.0"
+
   val licenses = List(License.MIT)
 }
 
@@ -111,6 +114,8 @@ lazy val libs = new {
   lazy val extrasScalaIo = Def.setting("io.kevinlee" %%% "extras-scala-io" % props.ExtrasVersion)
 
   lazy val scalaXml = Def.setting("org.scala-lang.modules" %%% "scala-xml" % props.ScalaXmlVersion)
+
+  lazy val justSpinnerCore = Def.setting("io.kevinlee" %%% "just-spinner-core" % props.JustSpinnerVersion)
 
   lazy val tests = new {
     lazy val hedgehogCore = Def.setting("qa.hedgehog" %%% "hedgehog-core" % props.HedgehogVersion % Test)

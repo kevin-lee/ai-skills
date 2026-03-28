@@ -8,6 +8,8 @@ import cue4s.*
 
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 
+import just.spinner.*
+
 import scala.util.{Failure, Success, Try}
 
 object Install {
@@ -254,13 +256,20 @@ object Install {
         localRoot = none[os.Path],
       )
 
-      print("Cloning repository...")
+      val spinner = Spinner.createDefaultSideEffect(
+        SpinnerConfig
+          .default
+          .withText("Cloning repository...")
+          .withColor(Color.cyan)
+          .withIndent(2),
+      )
+      val _       = spinner.start()
       Try {
         os.proc("git", "clone", "--depth", "1", "--quiet", repoUrl, (tempDir / "repo").toString)
           .call(stderr = os.Pipe)
       } match {
         case Failure(ex) =>
-          println(" failed")
+          val _   = spinner.fail(Some("Clone failed"))
           val msg = ex.getMessage
           if msg.nonEmpty then println(msg.dim) else ()
           println("\nTip: For private repos, ensure git SSH keys or credentials are configured".yellow)
@@ -268,7 +277,7 @@ object Install {
           aiskills.cli.TempDirCleanup.unregister()
           throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
         case Success(_) =>
-          println(" done")
+          val _ = spinner.succeed(Some("Repository cloned"))
       }
 
       ResolvedSource.Git(tempDir / "repo", repoUrl, skillSubpath, sourceInfo)
