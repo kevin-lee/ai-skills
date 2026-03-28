@@ -77,7 +77,7 @@ final case class SkillLocationInfo(
 
 final case class InstallOptions(
   global: Boolean,
-  agent: Option[Agent],
+  agent: Option[List[Agent]],
   allAgents: Boolean,
   yes: Boolean,
 )

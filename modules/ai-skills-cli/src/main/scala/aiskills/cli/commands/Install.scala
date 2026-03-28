@@ -69,7 +69,7 @@ object Install {
     if options.allAgents then (Agent.all, !options.global)
     else
       options.agent match {
-        case Some(a) => (List(a), !options.global)
+        case Some(agents) => (agents, !options.global)
         case None =>
           val agents    = promptForAgents()
           val isProject = if options.global then false else promptForLocation(agents)

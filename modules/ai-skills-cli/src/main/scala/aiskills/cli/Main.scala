@@ -97,6 +97,7 @@ object Main {
           |  aiskills install owner/repo --global                   # Install globally (interactive agent selection)
           |  aiskills install owner/repo --agent universal          # Install into .agents/skills (project)
           |  aiskills install owner/repo --agent claude             # Install into .claude/skills (project)
+          |  aiskills install owner/repo --agent claude,cursor      # Install into Claude + Cursor (project)
           |  aiskills install owner/repo --agent cursor             # Install into .cursor/skills (project)
           |  aiskills install owner/repo --agent claude --global    # Install globally (~/.claude/skills)
           |  aiskills install owner/repo --all-agents               # Install into all agent directories
@@ -113,26 +114,30 @@ object Main {
         val agent     = Opts
           .option[String](
             "agent",
-            s"Target agent (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
+            s"Target agent (comma-separated: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
             short = "a",
           )
           .orNone
         val allAgents = Opts.flag("all-agents", "Install to all agent directories").orFalse
         val yes       = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
         (source, global, agent, allAgents, yes).mapN { (src, g, a, all, y) =>
-          val agentOpt: Option[Agent] = a.flatMap { agentStr =>
-            Agent.fromString(agentStr) match {
-              case Some(agentEnum) => Some(agentEnum)
-              case None =>
+          if a.isDefined && all then {
+            System.err.println("Error: Cannot use both --agent and --all-agents. Use one or the other.")
+            sys.exit(1)
+          } else ()
+          val parsedAgents: Option[List[Agent]] = a.map { agentStr =>
+            aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
+              case Right(agents) => agents
+              case Left(invalid) =>
                 System
                   .err
                   .println(
-                    s"Error: Invalid agent '$agentStr'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                    s"Error: Invalid agent '$invalid'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
                   )
                 sys.exit(1)
             }
           }
-          Install.installSkill(src, InstallOptions(global = g, agent = agentOpt, allAgents = all, yes = y))
+          Install.installSkill(src, InstallOptions(global = g, agent = parsedAgents, allAgents = all, yes = y))
         }
       }
 
