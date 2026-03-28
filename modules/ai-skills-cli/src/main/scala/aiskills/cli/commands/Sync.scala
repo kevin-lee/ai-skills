@@ -74,8 +74,9 @@ object Sync {
                 println(
                   s"\u26a0 All existing files and folders in '$name' will be removed if you choose to overwrite.".yellow
                 )
+                val pathLabel = Dirs.displaySkillsDir(to, s.location)
                 prompts.confirm(
-                  s"Skill '$name' already exists in ${to.toString} (${s.location.toString.toLowerCase}). Overwrite?".yellow,
+                  s"Skill '$name' already exists in ${to.toString} (${s.location.toString.toLowerCase}): $pathLabel. Overwrite?".yellow,
                   default = false,
                 ) match {
                   case Completion.Finished(v) =>
@@ -153,9 +154,10 @@ object Sync {
                     (count, bulk)
 
                   case BulkDecision.Undecided =>
+                    val pathLabel = Dirs.displaySkillsDir(to, s.location)
                     OverwritePrompt.askOverwriteChoice(
                       s.name,
-                      s"Skill '${s.name}' already exists in ${to.toString} (${s.location.toString.toLowerCase}). What would you like to do?",
+                      s"Skill '${s.name}' already exists in ${to.toString} (${s.location.toString.toLowerCase}): $pathLabel. What would you like to do?",
                     ) match {
                       case Left(code) => sys.exit(code)
 

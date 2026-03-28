@@ -72,7 +72,7 @@ object Install {
         case Some(a) => (List(a), !options.global)
         case None =>
           val agents    = promptForAgents()
-          val isProject = if options.global then false else promptForLocation()
+          val isProject = if options.global then false else promptForLocation(agents)
           (agents, isProject)
       }
   }
@@ -103,15 +103,20 @@ object Install {
     }
   }
 
-  private def promptForLocation(): Boolean = {
-    val locationLabels = List("project", "global")
+  private def promptForLocation(agents: List[Agent]): Boolean = {
+    val projectPaths   = agents.map(_.projectDirName).distinct.mkString(", ")
+    val globalPaths    = agents.map(a => s"~/${a.globalDirName}").distinct.mkString(", ")
+    val locationLabels = List(
+      s"project ($projectPaths)",
+      s"global  ($globalPaths)",
+    )
 
     aiskills.cli.SigintHandler.install()
     val result = Prompts.sync.use { prompts =>
       prompts.multiChoiceNoneSelected("Select install location", locationLabels) match {
         case Completion.Finished(selectedLabels) =>
           selectedLabels.headOption match {
-            case Some(label) => Right(label === "project")
+            case Some(label) => Right(label.startsWith("project"))
             case None =>
               println("No location selected. Defaulting to project.".yellow)
               Right(true)

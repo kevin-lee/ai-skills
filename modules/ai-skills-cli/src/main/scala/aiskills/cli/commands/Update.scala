@@ -1,7 +1,7 @@
 package aiskills.cli.commands
 
 import aiskills.core.SkillSourceType
-import aiskills.core.utils.{SkillMetadata, SkillNames, Skills}
+import aiskills.core.utils.{Dirs, SkillMetadata, SkillNames, Skills}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
@@ -48,8 +48,9 @@ object Update {
             val metadata = SkillMetadata.readSkillMetadata(skill.path)
             metadata match {
               case None =>
+                val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
                 println(
-                  s"Skipped: ${skill.name} [${skill.agent.toString}] (no source metadata; re-install once to enable updates)".yellow
+                  s"Skipped: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel (no source metadata; re-install once to enable updates)".yellow
                 )
                 missingMetadata += skill.name
                 (upd, skp + 1)
@@ -75,7 +76,10 @@ object Update {
                       skill.path,
                       meta.copy(installedAt = aiskills.core.utils.isoNow()),
                     )
-                    println(s"\u2705 Updated: ${skill.name} [${skill.agent.toString}]".green)
+                    val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
+                    println(
+                      s"\u2705 Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
+                    )
                     (upd + 1, skp)
                 }
 
@@ -129,7 +133,12 @@ object Update {
                               skill.path,
                               meta.copy(installedAt = aiskills.core.utils.isoNow()),
                             )
-                            val _ = spinner.succeed(Some(s"Updated: ${skill.name} [${skill.agent.toString}]"))
+                            val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
+                            val _         = spinner.succeed(
+                              Some(
+                                s"Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel"
+                              )
+                            )
                             (upd + 1, skp)
                           }
                       }

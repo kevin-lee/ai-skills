@@ -12,6 +12,16 @@ object Dirs {
       case SkillLocation.Project => os.pwd / os.RelPath(agent.projectDirName) / "skills"
     }
 
+  /** Display-friendly skills directory path for a given agent and location.
+    * Project example: ".agents/skills"
+    * Global example: "~/.agents/skills"
+    */
+  def displaySkillsDir(agent: Agent, location: SkillLocation): String =
+    location match {
+      case SkillLocation.Project => s"${agent.projectDirName}/skills"
+      case SkillLocation.Global => s"~/${agent.globalDirName}/skills"
+    }
+
   /** Get all searchable skill directories in priority order.
     * Priority:
     *   1. Project universal (.agents)
