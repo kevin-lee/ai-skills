@@ -1,7 +1,7 @@
 package aiskills.cli.commands
 
 import aiskills.core.{Agent, SkillLocation}
-import aiskills.core.utils.Skills
+import aiskills.core.utils.{Dirs, Skills}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
@@ -28,7 +28,9 @@ object ListCmd {
       }
 
       for skill <- sorted do {
-        val locationLabel = s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})".blue
+        val pathLabel     = Dirs.displaySkillsDir(skill.agent, skill.location)
+        val locationLabel =
+          s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})".blue + s": $pathLabel".dim
         println(s"  ${skill.name.padTo(25, ' ').bold} $locationLabel")
         println(s"    ${skill.description.dim}\n")
       }

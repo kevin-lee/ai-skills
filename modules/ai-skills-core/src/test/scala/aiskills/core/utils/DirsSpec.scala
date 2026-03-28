@@ -19,6 +19,14 @@ object DirsSpec extends Properties {
     example("getSkillsDir: project Gemini uses .gemini", testProjectGemini),
     example("getSkillsDir: project Windsurf uses .windsurf", testProjectWindsurf),
     example("getSkillsDir: global Windsurf uses .codeium/windsurf (asymmetric)", testGlobalWindsurf),
+    example("displaySkillsDir: project Universal", testDisplayProjectUniversal),
+    example("displaySkillsDir: global Universal", testDisplayGlobalUniversal),
+    example("displaySkillsDir: project Claude", testDisplayProjectClaude),
+    example("displaySkillsDir: global Claude", testDisplayGlobalClaude),
+    example("displaySkillsDir: project Windsurf", testDisplayProjectWindsurf),
+    example("displaySkillsDir: global Windsurf (asymmetric)", testDisplayGlobalWindsurf),
+    example("displaySkillsDir: project Copilot", testDisplayProjectCopilot),
+    example("displaySkillsDir: global Copilot (asymmetric)", testDisplayGlobalCopilot),
     example("getSearchDirs: returns 14 dirs", testSearchDirsCount),
     example("getSearchDirs: correct priority order", testSearchDirsOrder),
     example("getSearchDirs: first is project universal", testSearchDirsFirst),
@@ -59,6 +67,30 @@ object DirsSpec extends Properties {
   private def testGlobalWindsurf: Result =
     Dirs.getSkillsDir(Agent.Windsurf, SkillLocation.Global) ==== (os.home / ".codeium" / "windsurf" / "skills")
 
+  private def testDisplayProjectUniversal: Result =
+    Dirs.displaySkillsDir(Agent.Universal, SkillLocation.Project) ==== ".agents/skills"
+
+  private def testDisplayGlobalUniversal: Result =
+    Dirs.displaySkillsDir(Agent.Universal, SkillLocation.Global) ==== "~/.agents/skills"
+
+  private def testDisplayProjectClaude: Result =
+    Dirs.displaySkillsDir(Agent.Claude, SkillLocation.Project) ==== ".claude/skills"
+
+  private def testDisplayGlobalClaude: Result =
+    Dirs.displaySkillsDir(Agent.Claude, SkillLocation.Global) ==== "~/.claude/skills"
+
+  private def testDisplayProjectWindsurf: Result =
+    Dirs.displaySkillsDir(Agent.Windsurf, SkillLocation.Project) ==== ".windsurf/skills"
+
+  private def testDisplayGlobalWindsurf: Result =
+    Dirs.displaySkillsDir(Agent.Windsurf, SkillLocation.Global) ==== "~/.codeium/windsurf/skills"
+
+  private def testDisplayProjectCopilot: Result =
+    Dirs.displaySkillsDir(Agent.Copilot, SkillLocation.Project) ==== ".github/skills"
+
+  private def testDisplayGlobalCopilot: Result =
+    Dirs.displaySkillsDir(Agent.Copilot, SkillLocation.Global) ==== "~/.copilot/skills"
+
   private def testSearchDirsCount: Result = {
     val dirs = Dirs.getSearchDirs()
     dirs.length ==== 14
@@ -73,7 +105,7 @@ object DirsSpec extends Properties {
     Result.all(
       List(
         // Project universal
-        dirs(0) ==== ((os.pwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project)),
+        dirs(0) ==== (os.pwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project),
         // Project agent-specific (alphabetical)
         dirs(1)._2 ==== Agent.Claude,
         dirs(2)._2 ==== Agent.Codex,
@@ -84,7 +116,7 @@ object DirsSpec extends Properties {
         // All project dirs are Project location
         Result.assert(dirs.take(7).forall(_._3 === SkillLocation.Project)),
         // Global universal
-        dirs(7) ==== ((os.home / ".agents" / "skills", Agent.Universal, SkillLocation.Global)),
+        dirs(7) ==== (os.home / ".agents" / "skills", Agent.Universal, SkillLocation.Global),
         // Global agent-specific (alphabetical)
         dirs(8)._2 ==== Agent.Claude,
         dirs(9)._2 ==== Agent.Codex,

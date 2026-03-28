@@ -1,7 +1,7 @@
 package aiskills.cli.commands
 
 import aiskills.core.SkillLocation
-import aiskills.core.utils.{AgentsMd, Skills}
+import aiskills.core.utils.{AgentsMd, Dirs, Skills}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 import cue4s.*
@@ -19,7 +19,8 @@ object Manage {
       }
 
       val labels = sorted.map { skill =>
-        val locationLabel = s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})"
+        val pathLabel     = Dirs.displaySkillsDir(skill.agent, skill.location)
+        val locationLabel = s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel"
         s"${skill.name.padTo(25, ' ')} $locationLabel"
       }
 
@@ -35,8 +36,9 @@ object Manage {
               val removedSkills   = selectedIndices.map(sorted(_))
               for skill <- removedSkills do {
                 os.remove.all(skill.path)
+                val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
                 println(
-                  s"\u2705 Removed: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString})".green
+                  s"\u2705 Removed: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
                 )
               }
 
