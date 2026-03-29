@@ -101,13 +101,28 @@ aiskills <command> [options]
 
 ### Commands
 
-#### `list` — List all installed skills
+#### `list` — List installed skills
 
 ```bash
-aiskills list
+aiskills list                            # Interactive scope & agent selection
+aiskills list --project                  # Project skills only
+aiskills list --global                   # Global skills only
+aiskills list --agent claude             # Claude only (both scopes)
+aiskills list --agent claude,cursor      # Multiple agents
+aiskills list --all-agents               # All agents
+aiskills list --all-agents --global      # Global skills, all agents
 ```
 
-Searches all agent skill directories and displays installed skills with their names, descriptions, agent, and scope (project/global).
+Displays installed skills with their names, descriptions, agent, scope (project/global), and file system paths. Without flags, an interactive prompt lets you select the scope and agent(s).
+
+Options:
+
+| Flag                    | Description                                                                                       |
+|-------------------------|---------------------------------------------------------------------------------------------------|
+| `-p`, `--project`       | Show project skills only                                                                          |
+| `-g`, `--global`        | Show global skills only                                                                           |
+| `-a`, `--agent <names>` | Filter by agent(s), comma-separated (universal, claude, cursor, codex, gemini, windsurf, copilot) |
+| `--all-agents`          | Show skills for all agents (skips agent prompt)                                                   |
 
 #### `install <source>` — Install skills
 
@@ -132,24 +147,26 @@ aiskills install ./path/to/skill-directory
 aiskills install ~/my-skills/my-skill
 ```
 
-Target a specific agent or all agents:
+Target specific agent(s) or all agents:
 
 ```bash
-aiskills install owner/repo                       # Default: universal (.agents/skills/)
-aiskills install owner/repo --agent claude         # Claude only
-aiskills install owner/repo --agent cursor         # Cursor only
-aiskills install owner/repo --all-agents           # All agent directories
-aiskills install owner/repo --agent gemini --global  # Global Gemini
+aiskills install owner/repo                            # Interactive agent & location selection
+aiskills install owner/repo --agent claude             # Claude only
+aiskills install owner/repo --agent claude,cursor      # Claude and Cursor
+aiskills install owner/repo --all-agents               # All agent directories
+aiskills install owner/repo --agent gemini --global    # Global Gemini
 ```
+
+Without `--agent` or `--all-agents`, an interactive prompt lets you choose the target agent(s) and location. If a skill already exists, you are prompted to overwrite or skip.
 
 Options:
 
-| Flag                   | Description                                                                          |
-|------------------------|--------------------------------------------------------------------------------------|
-| `-a`, `--agent <name>` | Target agent (universal, claude, cursor, codex, gemini, windsurf, copilot). Default: universal |
-| `--all-agents`         | Install to all agent directories                                                     |
-| `-g`, `--global`       | Install globally instead of project-local                                            |
-| `-y`, `--yes`          | Skip interactive selection, install all skills found                                 |
+| Flag                    | Description                                                                          |
+|-------------------------|--------------------------------------------------------------------------------------|
+| `-a`, `--agent <names>` | Target agent(s), comma-separated (universal, claude, cursor, codex, gemini, windsurf, copilot) |
+| `--all-agents`          | Install to all agent directories                                                     |
+| `-g`, `--global`        | Install globally instead of project-local                                            |
+| `-y`, `--yes`           | Skip interactive selection, install all skills found                                 |
 
 #### `read <skill-names>` — Read skills to stdout
 
@@ -180,7 +197,7 @@ Re-fetches skills from their original source (git or local).
 
 #### `sync` — Sync skills between agents
 
-Copy skills from one agent's directory to another:
+Copy skills from one agent's directory to another. If a skill already exists in the target, you are prompted to overwrite or skip.
 
 ```bash
 aiskills sync                                              # Interactive mode
