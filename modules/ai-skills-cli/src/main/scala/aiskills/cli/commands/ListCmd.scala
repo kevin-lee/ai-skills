@@ -10,7 +10,7 @@ object ListCmd {
 
   /** List installed skills, optionally filtered by scope and agent. */
   def listSkills(options: ListOptions): Unit = {
-    val hasAnyFlag = options.project || options.global || options.agent.isDefined || options.allAgents
+    val hasAnyFlag = options.project || options.global || options.agent.isDefined
     if hasAnyFlag then listWithFlags(options)
     else listInteractive()
   }
@@ -22,8 +22,7 @@ object ListCmd {
       else List(SkillLocation.Project, SkillLocation.Global)
 
     val agents: List[Agent] =
-      if options.allAgents then Agent.all
-      else options.agent.getOrElse(Agent.all)
+      options.agent.getOrElse(Agent.all)
 
     val skills = for {
       agent    <- agents
@@ -45,7 +44,7 @@ object ListCmd {
         s"  ${"aiskills install anthropics/skills".cyan}                   ${"# Project, universal (default)".dim}"
       )
       println(s"  ${"aiskills install owner/skill --agent claude".cyan}          ${"# Project, Claude".dim}")
-      println(s"  ${"aiskills install owner/skill --all-agents".cyan}            ${"# Project, all agents".dim}")
+      println(s"  ${"aiskills install owner/skill --agent all".cyan}              ${"# Project, all agents".dim}")
       println(s"  ${"aiskills install owner/skill --global".cyan}                ${"# Global".dim}")
     } else {
       promptForScope() match {

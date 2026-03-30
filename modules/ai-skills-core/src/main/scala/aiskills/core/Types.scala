@@ -78,7 +78,6 @@ final case class SkillLocationInfo(
 final case class InstallOptions(
   global: Boolean,
   agent: Option[List[Agent]],
-  allAgents: Boolean,
   yes: Boolean,
 )
 
@@ -90,7 +89,6 @@ final case class ListOptions(
   project: Boolean,
   global: Boolean,
   agent: Option[List[Agent]],
-  allAgents: Boolean,
 )
 
 final case class SkillMetadata(
@@ -183,8 +181,7 @@ final case class RemoveOptions(
 final case class SyncOptions(
   skillName: Option[String],
   from: Option[Agent],
-  to: Option[Agent],
-  allAgents: Boolean,
+  to: Option[List[Agent]],
   yes: Boolean,
 )
 
