@@ -177,6 +177,101 @@ object Sync {
     }
   }
 
+  private def syncAllSkillsWithLocations(
+    from: Agent,
+    to: Agent,
+    sourceLocation: SkillLocation,
+    targetLocations: List[SkillLocation],
+    yes: Boolean,
+  ): Unit = {
+    if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
+    else {
+      val sourceSkills = Skills.findSkillsByAgent(from, sourceLocation)
+
+      if sourceSkills.isEmpty then println(
+        s"No skills found in ${from.toString} (${sourceLocation.toString.toLowerCase}).".yellow
+      )
+      else {
+        val targetLabel = targetLocations.map(_.toString.toLowerCase).mkString(" and ")
+        println(
+          s"Syncing ${sourceSkills.length} skill(s) from ${from.toString} (${sourceLocation.toString.toLowerCase}) to ${to.toString} ($targetLabel)...".dim
+        )
+
+        val (synced, _) =
+          sourceSkills.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
+            case ((count, bulk), s) =>
+              targetLocations.foldLeft((count, bulk)) {
+                case ((count, bulk), targetLocation) =>
+                  val targetDir  = Dirs.getSkillsDir(to, targetLocation)
+                  val targetPath = targetDir / s.name
+
+                  def doSync(): Int = {
+                    if os.exists(targetPath) then {
+                      println(s"Overwriting: ${s.name} (all existing files and folders will be removed)".dim)
+                      os.remove.all(targetPath)
+                    } else ()
+                    os.makeDir.all(targetDir)
+                    os.copy(s.path, targetPath, replaceExisting = true)
+                    println(
+                      s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
+                    )
+                    count + 1
+                  }
+
+                  if !os.exists(targetPath) then {
+                    os.makeDir.all(targetDir)
+                    os.copy(s.path, targetPath, replaceExisting = true)
+                    println(
+                      s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
+                    )
+                    (count + 1, bulk)
+                  } else if yes then (doSync(), bulk)
+                  else
+                    bulk match {
+                      case BulkDecision.OverwriteAll =>
+                        (doSync(), bulk)
+
+                      case BulkDecision.SkipAll =>
+                        println(s"Skipped: ${s.name}".yellow)
+                        (count, bulk)
+
+                      case BulkDecision.Undecided =>
+                        val pathLabel = Dirs.displaySkillsDir(to, targetLocation)
+                        OverwritePrompt.askOverwriteChoice(
+                          s.name,
+                          s"Skill '${s.name}' already exists in ${to.toString} (${targetLocation.toString.toLowerCase}): $pathLabel. What would you like to do?",
+                        ) match {
+                          case Left(code) => sys.exit(code)
+
+                          case Right(OverwriteChoice.Yes) =>
+                            (doSync(), BulkDecision.Undecided)
+
+                          case Right(OverwriteChoice.No) =>
+                            println(s"Skipped: ${s.name}".yellow)
+                            (count, BulkDecision.Undecided)
+
+                          case Right(OverwriteChoice.YesToAll) =>
+                            (doSync(), BulkDecision.OverwriteAll)
+
+                          case Right(OverwriteChoice.NoToAll) =>
+                            println(s"Skipped: ${s.name}".yellow)
+                            (count, BulkDecision.SkipAll)
+                        }
+                    }
+              }
+          }
+
+        println(
+          s"\n\u2705 Sync complete: $synced skill(s) synced from ${from.toString} to ${to.toString}".green
+        )
+
+        for targetLocation <- targetLocations do {
+          AgentsMd.updateAgentsMdForAgent(to, targetLocation)
+        }
+      }
+    }
+  }
+
   private def interactiveSync(yes: Boolean): Unit = {
     val allSkills = Skills.findAllSkills()
 
@@ -184,25 +279,48 @@ object Sync {
       println("No skills installed. Install skills first:")
       println(s"  ${"aiskills install anthropics/skills".cyan}")
     } else {
-      val grouped = allSkills.groupBy(_.agent)
-      val agents  = Agent.all.filter(grouped.contains)
+      // Step 1: Pick source location
+      val sourceLocation = {
+        val options = List("project", "global")
+        aiskills.cli.SigintHandler.install()
+        val result  = Prompts.sync.use { prompts =>
+          prompts.singleChoice("Select source location", options) match {
+            case Completion.Finished(selected) =>
+              selected match {
+                case "project" => Right(SkillLocation.Project)
+                case _ => Right(SkillLocation.Global)
+              }
+            case Completion.Fail(CompletionError.Interrupted) =>
+              println("\n\nCancelled by user".yellow)
+              Left(0)
+            case Completion.Fail(CompletionError.Error(msg)) =>
+              System.err.println(s"Error: $msg")
+              Left(1)
+          }
+        }
+        result match {
+          case Left(code) => sys.exit(code)
+          case Right(v) => v
+        }
+      }
 
-      if agents.length < 1 then println("No skills found in any agent directory.".yellow)
+      // Step 2: Pick source agent (filtered by source location)
+      val skillsByAgent = allSkills.filter(_.location === sourceLocation).groupBy(_.agent)
+      val agents        = Agent.all.filter(skillsByAgent.contains)
+
+      if agents.isEmpty then println(s"No skills found in ${sourceLocation.toString.toLowerCase} scope.".yellow)
       else {
-        // Step 1: Pick source agent
         val agentLabels = agents.map { a =>
-          val count = grouped(a).length
+          val count = skillsByAgent(a).length
           s"${a.toString.padTo(15, ' ')} ($count skill(s))"
         }
 
         val sourceAgent = {
           aiskills.cli.SigintHandler.install()
           val result = Prompts.sync.use { prompts =>
-            prompts.multiChoiceNoneSelected("Select source agent (pick one)", agentLabels) match {
-              case Completion.Finished(selectedLabels) =>
-                Right(selectedLabels.headOption.flatMap { label =>
-                  agents.find(a => label.contains(a.toString))
-                })
+            prompts.singleChoice("Select source agent", agentLabels) match {
+              case Completion.Finished(selectedLabel) =>
+                Right(agents.find(a => selectedLabel.contains(a.toString)))
               case Completion.Fail(CompletionError.Interrupted) =>
                 println("\n\nCancelled by user".yellow)
                 Left(0)
@@ -221,7 +339,33 @@ object Sync {
           case None =>
             println("No agent selected.".yellow)
           case Some(from) =>
-            // Step 2: Pick target agents
+            // Step 3: Pick target location
+            val targetLocations = {
+              val options = List("project", "global", "both")
+              aiskills.cli.SigintHandler.install()
+              val result  = Prompts.sync.use { prompts =>
+                prompts.singleChoice("Select target location", options) match {
+                  case Completion.Finished(selected) =>
+                    selected match {
+                      case "project" => Right(List(SkillLocation.Project))
+                      case "global" => Right(List(SkillLocation.Global))
+                      case _ => Right(List(SkillLocation.Project, SkillLocation.Global))
+                    }
+                  case Completion.Fail(CompletionError.Interrupted) =>
+                    println("\n\nCancelled by user".yellow)
+                    Left(0)
+                  case Completion.Fail(CompletionError.Error(msg)) =>
+                    System.err.println(s"Error: $msg")
+                    Left(1)
+                }
+              }
+              result match {
+                case Left(code) => sys.exit(code)
+                case Right(v) => v
+              }
+            }
+
+            // Step 4: Pick target agents
             val targetAgents = Agent.all.filterNot(_ === from)
             val targetLabels = targetAgents.map(_.toString)
 
@@ -248,7 +392,7 @@ object Sync {
             if selectedTargets.isEmpty then println("No target agents selected.".yellow)
             else
               for target <- selectedTargets do {
-                syncAllSkills(from, target, yes)
+                syncAllSkillsWithLocations(from, target, sourceLocation, targetLocations, yes)
               }
         }
       }
