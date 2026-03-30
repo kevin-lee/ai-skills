@@ -30,8 +30,6 @@ object DirsSpec extends Properties {
     example("getSearchDirs: returns 14 dirs", testSearchDirsCount),
     example("getSearchDirs: correct priority order", testSearchDirsOrder),
     example("getSearchDirs: first is project universal", testSearchDirsFirst),
-    example("getSearchDirs: prefer reorders correctly", testSearchDirsPrefer),
-    example("getSearchDirs: prefer None returns default", testSearchDirsPreferNone),
   )
 
   private def testProjectUniversal: Result =
@@ -142,22 +140,4 @@ object DirsSpec extends Properties {
     )
   }
 
-  private def testSearchDirsPrefer: Result = {
-    val dirs                       = Dirs.getSearchDirs(Agent.Cursor.some)
-    // Cursor dirs should be first
-    val (firstPath, firstAgent, _) = dirs.head
-    Result.all(
-      List(
-        firstAgent ==== Agent.Cursor,
-        // Should still have 14 dirs
-        dirs.length ==== 14,
-      )
-    )
-  }
-
-  private def testSearchDirsPreferNone: Result = {
-    val defaultDirs    = Dirs.getSearchDirs()
-    val preferNoneDirs = Dirs.getSearchDirs(none[Agent])
-    defaultDirs ==== preferNoneDirs
-  }
 }

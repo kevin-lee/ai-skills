@@ -156,22 +156,98 @@ object Main {
         "read",
         """Read skill(s) to stdout (for AI agents)
           |
-          |Outputs the SKILL.md content for one or more skills. Searches
-          |project-local directories first, then global. When a skill exists
-          |in multiple agent directories, use --prefer to select a specific one.
+          |Without arguments, opens an interactive prompt to select scope,
+          |agents, and skills. With skill names, reads from the specified
+          |agent(s) and location(s).
           |
-          |Examples:
-          |  aiskills read commit                         # Read one skill
-          |  aiskills read commit review-pr               # Read multiple skills
-          |  aiskills read commit --prefer claude         # Prefer Claude's version
-          |  aiskills read commit --prefer cursor         # Prefer Cursor's version
+          |Interactive mode:
+          |  aiskills read                                              # Interactive scope, agent & skill selection
+          |
+          |Non-interactive mode (--project/--global and --agent are required):
+          |  aiskills read commit --agent claude --project              # Project, Claude
+          |  aiskills read commit --agent claude --global               # Global, Claude
+          |  aiskills read commit --agent claude --project --global     # Both scopes, Claude
+          |  aiskills read commit --agent claude,cursor --project       # Project, Claude + Cursor
+          |  aiskills read commit --agent all --project                 # Project, all agents
+          |  aiskills read commit --agent all --project --global        # Both scopes, all agents
           |""".stripMargin,
       ) {
-        val names  = Opts.arguments[String](metavar = "skill-names")
-        val prefer = Opts.option[String]("prefer", "Prefer skills from this agent's directory").orNone
-        (names, prefer).mapN { (ns, p) =>
-          val preferAgent = p.flatMap(Agent.fromString)
-          Read.readSkill(ns.toList, ReadOptions(prefer = preferAgent))
+        val names   = Opts.arguments[String](metavar = "skill-names").orEmpty
+        val project = Opts.flag("project", "Read from project scope", short = "p").orFalse
+        val global  = Opts.flag("global", "Read from global scope", short = "g").orFalse
+        val agent   = Opts
+          .option[String](
+            "agent",
+            s"Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
+            short = "a",
+          )
+          .orNone
+        (names, project, global, agent).mapN { (ns, p, g, a) =>
+          val parsedAgents: Option[List[Agent]] = a.map { agentStr =>
+            aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
+              case Right(agents) => agents
+              case Left(invalid) =>
+                System
+                  .err
+                  .println(
+                    s"Error: Invalid agent '$invalid'. Valid agents: all, ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                  )
+                sys.exit(1)
+            }
+          }
+
+          val locations: Set[SkillLocation] = Set.concat(
+            if p then Set(SkillLocation.Project) else Set.empty,
+            if g then Set(SkillLocation.Global) else Set.empty,
+          )
+
+          val hasAnyFlag = locations.nonEmpty || parsedAgents.isDefined
+
+          if ns.isEmpty then {
+            if hasAnyFlag then {
+              System.err.println("Error: Must specify skill name(s) when using --project, --global, or --agent.")
+              System.err.println()
+              System.err.println("  Example: aiskills read commit --agent claude --project")
+              System.err.println()
+              System.err.println("For interactive reading, run without any flags:")
+              System.err.println("  aiskills read")
+              sys.exit(1)
+            } else ()
+            Read.readInteractive()
+          } else {
+            if !hasAnyFlag then {
+              System.err.println("Error: Must specify --project/--global and --agent when reading by name.")
+              System.err.println()
+              System.err.println("  --project (-p)  Read from project scope (current directory)")
+              System.err.println("  --global  (-g)  Read from global scope (home directory)")
+              System
+                .err
+                .println(
+                  s"  --agent (-a)    Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})"
+                )
+              System.err.println()
+              System.err.println("  Example: aiskills read commit --agent claude --project")
+              sys.exit(1)
+            } else if parsedAgents.isDefined && locations.isEmpty then {
+              System.err.println("Error: Must specify --project and/or --global when using --agent.")
+              System.err.println()
+              System.err.println("  Example: aiskills read commit --agent claude --project")
+              sys.exit(1)
+            } else if parsedAgents.isEmpty && locations.nonEmpty then {
+              System.err.println("Error: Must specify --agent when using --project/--global.")
+              System.err.println()
+              System
+                .err
+                .println(
+                  s"  --agent (-a)  Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})"
+                )
+              System.err.println()
+              System.err.println("  Example: aiskills read commit --agent claude --project")
+              sys.exit(1)
+            } else ()
+
+            Read.readSkill(ns, ReadOptions(locations = locations, agent = parsedAgents))
+          }
         }
       }
 
