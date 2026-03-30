@@ -67,11 +67,7 @@ object Remove {
 
   /** Remove a specific skill by name from the specified agent(s) and location(s). */
   def removeSkill(skillName: String, options: RemoveOptions): Unit = {
-    val locations: List[SkillLocation] =
-      List.concat(
-        if options.project then List(SkillLocation.Project) else Nil,
-        if options.global then List(SkillLocation.Global) else Nil,
-      )
+    val locations: List[SkillLocation] = options.locations.toList
 
     val agents = options.agent.getOrElse(Nil)
 

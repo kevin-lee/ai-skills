@@ -76,7 +76,7 @@ final case class SkillLocationInfo(
 )
 
 final case class InstallOptions(
-  global: Boolean,
+  locations: Set[SkillLocation],
   agent: Option[List[Agent]],
   yes: Boolean,
 )
@@ -86,8 +86,7 @@ final case class ReadOptions(
 )
 
 final case class ListOptions(
-  project: Boolean,
-  global: Boolean,
+  locations: Set[SkillLocation],
   agent: Option[List[Agent]],
 )
 
@@ -173,8 +172,7 @@ object AiSkillsError {
 }
 
 final case class RemoveOptions(
-  project: Boolean,
-  global: Boolean,
+  locations: Set[SkillLocation],
   agent: Option[List[Agent]],
 )
 
