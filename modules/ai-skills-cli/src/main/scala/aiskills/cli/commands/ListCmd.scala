@@ -10,16 +10,13 @@ object ListCmd {
 
   /** List installed skills, optionally filtered by scope and agent. */
   def listSkills(options: ListOptions): Unit = {
-    val hasAnyFlag = options.project || options.global || options.agent.isDefined
+    val hasAnyFlag = options.locations.nonEmpty || options.agent.isDefined
     if hasAnyFlag then listWithFlags(options)
     else listInteractive()
   }
 
   private def listWithFlags(options: ListOptions): Unit = {
-    val locations: List[SkillLocation] =
-      if options.project then List(SkillLocation.Project)
-      else if options.global then List(SkillLocation.Global)
-      else List(SkillLocation.Project, SkillLocation.Global)
+    val locations: List[SkillLocation] = options.locations.toList
 
     val agents: List[Agent] =
       options.agent.getOrElse(Agent.all)

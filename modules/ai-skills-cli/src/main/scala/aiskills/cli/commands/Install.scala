@@ -65,13 +65,13 @@ object Install {
     else f"${bytes / (1024.0 * 1024.0)}%.1fMB"
 
   /** Resolve agents and location from options, prompting interactively when not specified. */
-  private def resolveAgentsAndLocation(options: InstallOptions): (List[Agent], Boolean) = {
+  private def resolveAgentsAndLocation(options: InstallOptions): (List[Agent], Set[SkillLocation]) = {
     options.agent match {
-      case Some(agents) => (agents, !options.global)
+      case Some(agents) => (agents, options.locations)
       case None =>
         val agents    = promptForAgents()
-        val isProject = if options.global then false else promptForLocation(agents)
-        (agents, isProject)
+        val locations = if options.locations.nonEmpty then options.locations else promptForLocation(agents)
+        (agents, locations)
     }
   }
 
@@ -101,7 +101,7 @@ object Install {
     }
   }
 
-  private def promptForLocation(agents: List[Agent]): Boolean = {
+  private def promptForLocation(agents: List[Agent]): Set[SkillLocation] = {
     val projectPaths   = agents.map(_.projectDirName).distinct.mkString(", ")
     val globalPaths    = agents.map(a => s"~/${a.globalDirName}").distinct.mkString(", ")
     val locationLabels = List(
@@ -113,11 +113,15 @@ object Install {
     val result = Prompts.sync.use { prompts =>
       prompts.multiChoiceNoneSelected("Select install location", locationLabels) match {
         case Completion.Finished(selectedLabels) =>
-          selectedLabels.headOption match {
-            case Some(label) => Right(label.startsWith("project"))
-            case None =>
-              println("No location selected. Defaulting to project.".yellow)
-              Right(true)
+          if selectedLabels.isEmpty then {
+            println("No location selected. Defaulting to project.".yellow)
+            Right(Set(SkillLocation.Project))
+          } else {
+            val locs = selectedLabels.foldLeft(Set.empty[SkillLocation]) { (acc, label) =>
+              if label.startsWith("project") then acc + SkillLocation.Project
+              else acc + SkillLocation.Global
+            }
+            Right(locs)
           }
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
@@ -129,7 +133,7 @@ object Install {
     }
     result match {
       case Left(code) => throw SkillInstallException(code) // scalafix:ok DisableSyntax.throw
-      case Right(isProject) => isProject
+      case Right(locations) => locations
     }
   }
 
@@ -138,29 +142,34 @@ object Install {
     aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
 
     // Resolve agents and location (interactive if not specified) before cloning
-    val (agents, isProject) = resolveAgentsAndLocation(options)
+    val (agents, locations) = resolveAgentsAndLocation(options)
 
     // Resolve source once
     val resolvedSource = resolveSource(source)
 
     try {
-      for agent <- agents do {
+      for {
+        agent    <- agents
+        location <- locations
+      } do {
+        val isProject    = location === SkillLocation.Project
         val folder       = s"${agent.projectDirName}/skills"
         val globalFolder = s"${agent.globalDirName}/skills"
         val targetDir    =
           if isProject then os.pwd / os.RelPath(folder)
           else os.home / os.RelPath(globalFolder)
 
-        val location =
+        val locationDisplay =
           if isProject then s"project ($folder)".blue
           else s"global (~/$globalFolder)".dim
 
-        if agents.length > 1 then println(s"\n--- ${agent.toString} ---".bold)
+        if agents.length > 1 || locations.size > 1
+        then println(s"\n--- ${agent.toString} (${location.toString.toLowerCase}) ---".bold)
         else ()
 
         println(s"Installing from: ${source.cyan}")
-        println(s"Location: $location")
-        if agents.length <= 1 then {
+        println(s"Location: $locationDisplay")
+        if agents.length <= 1 && locations.size <= 1 then {
           if !isProject then println(s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim)
           else ()
         } else ()
@@ -185,13 +194,10 @@ object Install {
             }
         }
 
-        AgentsMd.updateAgentsMdForAgent(
-          agent,
-          if options.global then SkillLocation.Global else SkillLocation.Project,
-        )
+        AgentsMd.updateAgentsMdForAgent(agent, location)
       }
 
-      printPostInstallHints(isProject)
+      printPostInstallHints(locations)
     } finally {
       resolvedSource.cleanup()
     }
@@ -287,9 +293,9 @@ object Install {
     }
   }
 
-  private def printPostInstallHints(isProject: Boolean): Unit = {
+  private def printPostInstallHints(locations: Set[SkillLocation]): Unit = {
     println(s"\n${"Read skill:".dim} ${"aiskills read <skill-name>".cyan}")
-    if isProject then println(
+    if locations.contains(SkillLocation.Project) then println(
       s"${"Sync to other agents:".dim} ${"aiskills sync <skill-name> --from <agent> --to <agent>".cyan}"
     )
     else ()

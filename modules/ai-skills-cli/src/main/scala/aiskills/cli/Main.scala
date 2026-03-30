@@ -2,7 +2,7 @@ package aiskills.cli
 
 import cats.syntax.all.*
 import com.monovore.decline.*
-import aiskills.core.{Agent, InstallOptions, ListOptions, ReadOptions, RemoveOptions, SyncOptions}
+import aiskills.core.{Agent, InstallOptions, ListOptions, ReadOptions, RemoveOptions, SkillLocation, SyncOptions}
 import aiskills.cli.commands.*
 import aiskills.info.AiSkillsInfo
 
@@ -40,11 +40,11 @@ object Main {
           |  aiskills list                              # Interactive scope & agent selection
           |  aiskills list --project                    # Project skills, all agents
           |  aiskills list --global                     # Global skills, all agents
-          |  aiskills list --agent claude               # Both scopes, Claude only
-          |  aiskills list --agent claude,cursor        # Both scopes, Claude + Cursor
+          |  aiskills list --project --global           # Both scopes, all agents
           |  aiskills list --agent claude --project     # Project skills, Claude only
-          |  aiskills list --agent all                  # Both scopes, all agents (no prompt)
+          |  aiskills list --agent all --project        # Project skills, all agents (no prompt)
           |  aiskills list --agent all --global         # Global skills, all agents
+          |  aiskills list --agent all --project --global  # Both scopes, all agents
           |""".stripMargin,
       ) {
         val project = Opts.flag("project", "Show project skills only", short = "p").orFalse
@@ -57,10 +57,6 @@ object Main {
           )
           .orNone
         (project, global, agent).mapN { (p, g, a) =>
-          if p && g then {
-            System.err.println("Error: Cannot use both --project and --global. Omit both to show all.")
-            sys.exit(1)
-          } else ()
           val parsedAgents: Option[List[Agent]] = a.map { agentStr =>
             aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
               case Right(agents) => agents
@@ -73,7 +69,19 @@ object Main {
                 sys.exit(1)
             }
           }
-          ListCmd.listSkills(ListOptions(project = p, global = g, agent = parsedAgents))
+
+          val locations: Set[SkillLocation] = Set.concat(
+            if p then Set(SkillLocation.Project) else Set.empty,
+            if g then Set(SkillLocation.Global) else Set.empty,
+          )
+          if parsedAgents.isDefined && locations.isEmpty then {
+            System.err.println("Error: Must specify --project and/or --global when using --agent.")
+            System.err.println()
+            System.err.println("  Example: aiskills list --agent claude --project")
+            sys.exit(1)
+          } else ()
+
+          ListCmd.listSkills(ListOptions(locations = locations, agent = parsedAgents))
         }
       }
 
@@ -87,35 +95,35 @@ object Main {
           |you choose the target agent(s) and location.
           |
           |Examples:
-          |  aiskills install anthropics/skills                     # Interactive agent & location selection
-          |  aiskills install anthropics/skills/skills/pdf          # Single skill by path (interactive)
-          |  aiskills install owner/repo/skills/skill-name          # Single skill by path (interactive)
-          |  aiskills install owner/repo --global                   # Install globally (interactive agent selection)
-          |  aiskills install owner/repo --agent universal          # Install into .agents/skills (project)
-          |  aiskills install owner/repo --agent claude             # Install into .claude/skills (project)
-          |  aiskills install owner/repo --agent claude,cursor      # Install into Claude + Cursor (project)
-          |  aiskills install owner/repo --agent cursor             # Install into .cursor/skills (project)
-          |  aiskills install owner/repo --agent claude --global    # Install globally (~/.claude/skills)
-          |  aiskills install owner/repo --agent all                # Install into all agent directories
-          |  aiskills install owner/repo --agent all --global       # Install globally for all agents
-          |  aiskills install owner/repo -y                         # Skip interactive selection, install all
-          |  aiskills install https://github.com/owner/repo.git     # Full HTTPS Git URL
-          |  aiskills install git@github.com:owner/repo.git         # SSH Git URL (Useful for private repos)
-          |  aiskills install ./local/skill-directory               # Install from a local directory
-          |  aiskills install ~/my-skills/my-skill                  # Install from home-relative path
+          |  aiskills install anthropics/skills                          # Interactive agent & location selection
+          |  aiskills install anthropics/skills/skills/pdf               # Single skill by path (interactive)
+          |  aiskills install owner/repo/skills/skill-name               # Single skill by path (interactive)
+          |  aiskills install owner/repo --agent claude --project        # Project, Claude
+          |  aiskills install owner/repo --agent claude --global         # Global, Claude (~/.claude/skills)
+          |  aiskills install owner/repo --agent claude --project --global  # Both scopes, Claude
+          |  aiskills install owner/repo --agent claude,cursor --project # Project, Claude + Cursor
+          |  aiskills install owner/repo --agent all --project           # Project, all agents
+          |  aiskills install owner/repo --agent all --global            # Global, all agents
+          |  aiskills install owner/repo --agent all --project --global  # Both scopes, all agents
+          |  aiskills install owner/repo -y                              # Skip interactive selection, install all
+          |  aiskills install https://github.com/owner/repo.git          # Full HTTPS Git URL
+          |  aiskills install git@github.com:owner/repo.git              # SSH Git URL (Useful for private repos)
+          |  aiskills install ./local/skill-directory                    # Install from a local directory
+          |  aiskills install ~/my-skills/my-skill                       # Install from home-relative path
           |""".stripMargin,
       ) {
-        val source = Opts.argument[String](metavar = "source")
-        val global = Opts.flag("global", "Install globally (default: project install)", short = "g").orFalse
-        val agent  = Opts
+        val source  = Opts.argument[String](metavar = "source")
+        val project = Opts.flag("project", "Install to project scope (current directory)", short = "p").orFalse
+        val global  = Opts.flag("global", "Install to global scope (home directory)", short = "g").orFalse
+        val agent   = Opts
           .option[String](
             "agent",
             s"Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
             short = "a",
           )
           .orNone
-        val yes    = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
-        (source, global, agent, yes).mapN { (src, g, a, y) =>
+        val yes     = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
+        (source, project, global, agent, yes).mapN { (src, p, g, a, y) =>
           val parsedAgents: Option[List[Agent]] = a.map { agentStr =>
             aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
               case Right(agents) => agents
@@ -128,7 +136,19 @@ object Main {
                 sys.exit(1)
             }
           }
-          Install.installSkill(src, InstallOptions(global = g, agent = parsedAgents, yes = y))
+
+          val locations: Set[SkillLocation] = Set.concat(
+            if p then Set(SkillLocation.Project) else Set.empty,
+            if g then Set(SkillLocation.Global) else Set.empty,
+          )
+          if parsedAgents.isDefined && locations.isEmpty then {
+            System.err.println("Error: Must specify --project and/or --global when using --agent.")
+            System.err.println()
+            System.err.println("  Example: aiskills install owner/repo --agent claude --project")
+            sys.exit(1)
+          } else ()
+
+          Install.installSkill(src, InstallOptions(locations = locations, agent = parsedAgents, yes = y))
         }
       }
 
@@ -274,7 +294,11 @@ object Main {
               } else ()
               Remove.removeInteractive()
             case Some(name) =>
-              if !p && !g then {
+              val locations: Set[SkillLocation] = Set.concat(
+                if p then Set(SkillLocation.Project) else Set.empty,
+                if g then Set(SkillLocation.Global) else Set.empty,
+              )
+              if locations.isEmpty then {
                 System.err.println("Error: Must specify --project and/or --global when removing by name.")
                 System.err.println()
                 System.err.println("  --project (-p)  Remove from project scope (current directory)")
@@ -295,6 +319,7 @@ object Main {
                 System.err.println("  Example: aiskills remove commit --project --agent claude")
                 sys.exit(1)
               } else ()
+
               val parsedAgents: List[Agent] = a
                 .map { agentStr =>
                   aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
@@ -309,7 +334,8 @@ object Main {
                   }
                 }
                 .getOrElse(Nil)
-              Remove.removeSkill(name, RemoveOptions(project = p, global = g, agent = parsedAgents.some))
+
+              Remove.removeSkill(name, RemoveOptions(locations = locations, agent = parsedAgents.some))
           }
         }
       }
