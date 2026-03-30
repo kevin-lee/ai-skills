@@ -39,12 +39,8 @@ object Skills {
   }
 
   /** Find a specific skill by name. Returns the first match in priority order. */
-  def findSkill(skillName: String): Option[SkillLocationInfo] =
-    findSkill(skillName, prefer = none[Agent])
-
-  /** Find a specific skill by name with optional agent preference. */
-  def findSkill(skillName: String, prefer: Option[Agent]): Option[SkillLocationInfo] = {
-    val dirs = Dirs.getSearchDirs(prefer)
+  def findSkill(skillName: String): Option[SkillLocationInfo] = {
+    val dirs = Dirs.getSearchDirs()
     dirs
       .iterator
       .map { case (dir, agent, location) => (dir / skillName / "SKILL.md", agent, location) }
@@ -60,13 +56,6 @@ object Skills {
           )
       }
   }
-
-  /** Find all locations where a skill with the given name exists. */
-  def findAllSkillLocations(skillName: String): List[(os.Path, Agent, SkillLocation)] =
-    Dirs.getSearchDirs().filter {
-      case (dir, _, _) =>
-        os.exists(dir / skillName / "SKILL.md")
-    }
 
   /** Find all skills installed for a specific agent. */
   def findSkillsByAgent(agent: Agent, location: SkillLocation): List[Skill] = {

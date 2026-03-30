@@ -1,7 +1,6 @@
 package aiskills.core.utils
 
 import aiskills.core.{Agent, SkillLocation}
-import cats.syntax.all.*
 
 object Dirs {
 
@@ -46,13 +45,4 @@ object Dirs {
     projectUniversal ++ projectSpecific ++ globalUniversal ++ globalSpecific
   }
 
-  /** Get search dirs with a preferred agent's directories bumped to the front. */
-  def getSearchDirs(prefer: Option[Agent]): List[(os.Path, Agent, SkillLocation)] =
-    prefer match {
-      case None => getSearchDirs()
-      case Some(preferred) =>
-        val all                   = getSearchDirs()
-        val (preferredDirs, rest) = all.partition(_._2 === preferred)
-        preferredDirs ++ rest
-    }
 }

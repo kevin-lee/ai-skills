@@ -82,7 +82,8 @@ final case class InstallOptions(
 )
 
 final case class ReadOptions(
-  prefer: Option[Agent],
+  locations: Set[SkillLocation],
+  agent: Option[List[Agent]],
 )
 
 final case class ListOptions(
