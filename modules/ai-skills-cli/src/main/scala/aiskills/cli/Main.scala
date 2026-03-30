@@ -43,27 +43,22 @@ object Main {
           |  aiskills list --agent claude               # Both scopes, Claude only
           |  aiskills list --agent claude,cursor        # Both scopes, Claude + Cursor
           |  aiskills list --agent claude --project     # Project skills, Claude only
-          |  aiskills list --all-agents                 # Both scopes, all agents (no prompt)
-          |  aiskills list --all-agents --global        # Global skills, all agents
+          |  aiskills list --agent all                  # Both scopes, all agents (no prompt)
+          |  aiskills list --agent all --global         # Global skills, all agents
           |""".stripMargin,
       ) {
-        val project   = Opts.flag("project", "Show project skills only", short = "p").orFalse
-        val global    = Opts.flag("global", "Show global skills only", short = "g").orFalse
-        val agent     = Opts
+        val project = Opts.flag("project", "Show project skills only", short = "p").orFalse
+        val global  = Opts.flag("global", "Show global skills only", short = "g").orFalse
+        val agent   = Opts
           .option[String](
             "agent",
-            s"Filter by agent (comma-separated: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
+            s"Filter by agent (comma-separated or 'all': ${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
             short = "a",
           )
           .orNone
-        val allAgents = Opts.flag("all-agents", "Show skills for all agents (skip agent prompt)").orFalse
-        (project, global, agent, allAgents).mapN { (p, g, a, all) =>
+        (project, global, agent).mapN { (p, g, a) =>
           if p && g then {
             System.err.println("Error: Cannot use both --project and --global. Omit both to show all.")
-            sys.exit(1)
-          } else ()
-          if a.isDefined && all then {
-            System.err.println("Error: Cannot use both --agent and --all-agents. Use one or the other.")
             sys.exit(1)
           } else ()
           val parsedAgents: Option[List[Agent]] = a.map { agentStr =>
@@ -73,12 +68,12 @@ object Main {
                 System
                   .err
                   .println(
-                    s"Error: Invalid agent '$invalid'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                    s"Error: Invalid agent '$invalid'. Valid agents: all, ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
                   )
                 sys.exit(1)
             }
           }
-          ListCmd.listSkills(ListOptions(project = p, global = g, agent = parsedAgents, allAgents = all))
+          ListCmd.listSkills(ListOptions(project = p, global = g, agent = parsedAgents))
         }
       }
 
@@ -101,8 +96,8 @@ object Main {
           |  aiskills install owner/repo --agent claude,cursor      # Install into Claude + Cursor (project)
           |  aiskills install owner/repo --agent cursor             # Install into .cursor/skills (project)
           |  aiskills install owner/repo --agent claude --global    # Install globally (~/.claude/skills)
-          |  aiskills install owner/repo --all-agents               # Install into all agent directories
-          |  aiskills install owner/repo --all-agents --global      # Install globally for all agents
+          |  aiskills install owner/repo --agent all                # Install into all agent directories
+          |  aiskills install owner/repo --agent all --global       # Install globally for all agents
           |  aiskills install owner/repo -y                         # Skip interactive selection, install all
           |  aiskills install https://github.com/owner/repo.git     # Full HTTPS Git URL
           |  aiskills install git@github.com:owner/repo.git         # SSH Git URL (Useful for private repos)
@@ -110,22 +105,17 @@ object Main {
           |  aiskills install ~/my-skills/my-skill                  # Install from home-relative path
           |""".stripMargin,
       ) {
-        val source    = Opts.argument[String](metavar = "source")
-        val global    = Opts.flag("global", "Install globally (default: project install)", short = "g").orFalse
-        val agent     = Opts
+        val source = Opts.argument[String](metavar = "source")
+        val global = Opts.flag("global", "Install globally (default: project install)", short = "g").orFalse
+        val agent  = Opts
           .option[String](
             "agent",
-            s"Target agent (comma-separated: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
+            s"Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
             short = "a",
           )
           .orNone
-        val allAgents = Opts.flag("all-agents", "Install to all agent directories").orFalse
-        val yes       = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
-        (source, global, agent, allAgents, yes).mapN { (src, g, a, all, y) =>
-          if a.isDefined && all then {
-            System.err.println("Error: Cannot use both --agent and --all-agents. Use one or the other.")
-            sys.exit(1)
-          } else ()
+        val yes    = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
+        (source, global, agent, yes).mapN { (src, g, a, y) =>
           val parsedAgents: Option[List[Agent]] = a.map { agentStr =>
             aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
               case Right(agents) => agents
@@ -133,12 +123,12 @@ object Main {
                 System
                   .err
                   .println(
-                    s"Error: Invalid agent '$invalid'. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                    s"Error: Invalid agent '$invalid'. Valid agents: all, ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
                   )
                 sys.exit(1)
             }
           }
-          Install.installSkill(src, InstallOptions(global = g, agent = parsedAgents, allAgents = all, yes = y))
+          Install.installSkill(src, InstallOptions(global = g, agent = parsedAgents, yes = y))
         }
       }
 
@@ -192,33 +182,47 @@ object Main {
             |
             |Copies skills from one agent's directory to another. Without
             |arguments, runs an interactive wizard to pick source/target agents.
-            |Use --from / --to for scripted usage, and --all-agents to broadcast
+            |Use --from / --to for scripted usage, and --to all to broadcast
             |to every other agent directory.
             |
             |Examples:
             |  aiskills sync                                         # Interactive wizard
             |  aiskills sync commit --from claude --to cursor        # Sync one skill
-            |  aiskills sync commit --from claude --all-agents       # Sync one skill to all agents
+            |  aiskills sync commit --from claude --to all           # Sync one skill to all agents
             |  aiskills sync --from claude --to cursor               # Sync all skills between two agents
-            |  aiskills sync --from claude --all-agents              # Sync all skills to all agents
+            |  aiskills sync --from claude --to all                  # Sync all skills to all agents
             |  aiskills sync commit --from universal --to copilot    # Sync from universal to Copilot
             |  aiskills sync commit --from claude --to cursor -y     # Skip confirmation prompts
             |""".stripMargin,
         ) {
           val skillName = Opts.argument[String](metavar = "skill-name").orNone
           val from      = Opts.option[String]("from", "Source agent").orNone
-          val to        = Opts.option[String]("to", "Target agent").orNone
-          val allAgents = Opts.flag("all-agents", "Sync to all other agent directories").orFalse
+          val to        = Opts
+            .option[String](
+              "to",
+              s"Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
+            )
+            .orNone
           val yes       = Opts.flag("yes", "Skip confirmation", short = "y").orFalse
-          (skillName, from, to, allAgents, yes).mapN { (sn, f, t, all, y) =>
-            val fromAgent = f.flatMap(Agent.fromString)
-            val toAgent   = t.flatMap(Agent.fromString)
+          (skillName, from, to, yes).mapN { (sn, f, t, y) =>
+            val fromAgent                     = f.flatMap(Agent.fromString)
+            val parsedTo: Option[List[Agent]] = t.map { toStr =>
+              aiskills.core.utils.AgentNames.parseAgentNames(toStr) match {
+                case Right(agents) => agents
+                case Left(invalid) =>
+                  System
+                    .err
+                    .println(
+                      s"Error: Invalid agent '$invalid'. Valid agents: all, ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                    )
+                  sys.exit(1)
+              }
+            }
             Sync.syncSkills(
               SyncOptions(
                 skillName = sn,
                 from = fromAgent,
-                to = toAgent,
-                allAgents = all,
+                to = parsedTo,
                 yes = y,
               )
             )

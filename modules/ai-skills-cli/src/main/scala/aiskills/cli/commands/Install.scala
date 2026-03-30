@@ -66,15 +66,13 @@ object Install {
 
   /** Resolve agents and location from options, prompting interactively when not specified. */
   private def resolveAgentsAndLocation(options: InstallOptions): (List[Agent], Boolean) = {
-    if options.allAgents then (Agent.all, !options.global)
-    else
-      options.agent match {
-        case Some(agents) => (agents, !options.global)
-        case None =>
-          val agents    = promptForAgents()
-          val isProject = if options.global then false else promptForLocation(agents)
-          (agents, isProject)
-      }
+    options.agent match {
+      case Some(agents) => (agents, !options.global)
+      case None =>
+        val agents    = promptForAgents()
+        val isProject = if options.global then false else promptForLocation(agents)
+        (agents, isProject)
+    }
   }
 
   private def promptForAgents(): List[Agent] = {

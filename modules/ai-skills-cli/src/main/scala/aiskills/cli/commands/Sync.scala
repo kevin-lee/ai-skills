@@ -12,30 +12,20 @@ object Sync {
 
   /** Sync skills between agent directories. */
   def syncSkills(options: SyncOptions): Unit =
-    (options.from, options.to, options.skillName, options.allAgents) match {
+    (options.from, options.to, options.skillName) match {
       // Interactive mode: no flags provided
-      case (None, None, None, false) =>
+      case (None, None, None) =>
         interactiveSync(options.yes)
 
       // Specific skill, from/to specified
-      case (Some(from), Some(to), Some(name), false) =>
-        syncSingleSkill(name, from, to, options.yes)
-
-      // Specific skill, from specified, all agents
-      case (Some(from), None, Some(name), true) =>
-        val targets = Agent.all.filterNot(_ === from)
-        for target <- targets do {
+      case (Some(from), Some(targets), Some(name)) =>
+        for target <- targets.filterNot(_ === from) do {
           syncSingleSkill(name, from, target, options.yes)
         }
 
-      // All skills from one agent to another
-      case (Some(from), Some(to), None, false) =>
-        syncAllSkills(from, to, options.yes)
-
-      // All skills from one agent to all others
-      case (Some(from), None, None, true) =>
-        val targets = Agent.all.filterNot(_ === from)
-        for target <- targets do {
+      // All skills from one agent to target(s)
+      case (Some(from), Some(targets), None) =>
+        for target <- targets.filterNot(_ === from) do {
           syncAllSkills(from, target, options.yes)
         }
 
@@ -44,9 +34,9 @@ object Sync {
         System.err.println("Usage:")
         System.err.println("  aiskills sync                                            # Interactive")
         System.err.println("  aiskills sync <skill> --from <agent> --to <agent>        # One skill")
-        System.err.println("  aiskills sync <skill> --from <agent> --all-agents        # One skill to all")
+        System.err.println("  aiskills sync <skill> --from <agent> --to all            # One skill to all")
         System.err.println("  aiskills sync --from <agent> --to <agent>                # All skills")
-        System.err.println("  aiskills sync --from <agent> --all-agents                # All skills to all")
+        System.err.println("  aiskills sync --from <agent> --to all                    # All skills to all")
         sys.exit(1)
     }
 
