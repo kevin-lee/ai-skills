@@ -174,6 +174,12 @@ object AiSkillsError {
   }
 }
 
+final case class RemoveOptions(
+  project: Boolean,
+  global: Boolean,
+  agent: Option[List[Agent]],
+)
+
 final case class SyncOptions(
   skillName: Option[String],
   from: Option[Agent],

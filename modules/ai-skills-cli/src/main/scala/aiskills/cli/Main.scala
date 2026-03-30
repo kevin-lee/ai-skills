@@ -2,7 +2,7 @@ package aiskills.cli
 
 import cats.syntax.all.*
 import com.monovore.decline.*
-import aiskills.core.{Agent, InstallOptions, ListOptions, ReadOptions, SyncOptions}
+import aiskills.core.{Agent, InstallOptions, ListOptions, ReadOptions, RemoveOptions, SyncOptions}
 import aiskills.cli.commands.*
 import aiskills.info.AiSkillsInfo
 
@@ -18,13 +18,13 @@ object Main {
                |local directories.
                |
                |Quick start:
-               |  aiskills install anthropics/skills            # Install skills from a GitHub repo
-               |  aiskills list                                 # See what's installed
-               |  aiskills read commit                          # Output a skill (for AI agents)
-               |  aiskills update                               # Update all skills from source
-               |  aiskills sync --from claude --to cursor       # Copy skills between agents
-               |  aiskills remove commit                        # Remove a skill
-               |  aiskills manage                               # Interactive removal
+               |  aiskills install anthropics/skills               # Install skills from a GitHub repo
+               |  aiskills list                                    # See what's installed
+               |  aiskills read commit                             # Output a skill (for AI agents)
+               |  aiskills update                                  # Update all skills from source
+               |  aiskills sync --from claude --to cursor          # Copy skills between agents
+               |  aiskills remove                                  # Interactive removal
+               |  aiskills remove commit --agent claude --project  # Remove from specific location
                |""".stripMargin,
     version = AiSkillsInfo.version,
     main = {
@@ -41,10 +41,10 @@ object Main {
           |  aiskills list --project                    # Project skills, all agents
           |  aiskills list --global                     # Global skills, all agents
           |  aiskills list --agent claude               # Both scopes, Claude only
-          |  aiskills list --agent claude,cursor         # Both scopes, Claude + Cursor
-          |  aiskills list --agent claude --project      # Project skills, Claude only
-          |  aiskills list --all-agents                  # Both scopes, all agents (no prompt)
-          |  aiskills list --all-agents --global         # Global skills, all agents
+          |  aiskills list --agent claude,cursor        # Both scopes, Claude + Cursor
+          |  aiskills list --agent claude --project     # Project skills, Claude only
+          |  aiskills list --all-agents                 # Both scopes, all agents (no prompt)
+          |  aiskills list --all-agents --global        # Global skills, all agents
           |""".stripMargin,
       ) {
         val project   = Opts.flag("project", "Show project skills only", short = "p").orFalse
@@ -93,7 +93,8 @@ object Main {
           |
           |Examples:
           |  aiskills install anthropics/skills                     # Interactive agent & location selection
-          |  aiskills install anthropics/skills/commit              # Single skill by path (interactive)
+          |  aiskills install anthropics/skills/skills/pdf          # Single skill by path (interactive)
+          |  aiskills install owner/repo/skills/skill-name          # Single skill by path (interactive)
           |  aiskills install owner/repo --global                   # Install globally (interactive agent selection)
           |  aiskills install owner/repo --agent universal          # Install into .agents/skills (project)
           |  aiskills install owner/repo --agent claude             # Install into .claude/skills (project)
@@ -104,7 +105,7 @@ object Main {
           |  aiskills install owner/repo --all-agents --global      # Install globally for all agents
           |  aiskills install owner/repo -y                         # Skip interactive selection, install all
           |  aiskills install https://github.com/owner/repo.git     # Full HTTPS Git URL
-          |  aiskills install git@github.com:owner/repo.git         # SSH Git URL
+          |  aiskills install git@github.com:owner/repo.git         # SSH Git URL (Useful for private repos)
           |  aiskills install ./local/skill-directory               # Install from a local directory
           |  aiskills install ~/my-skills/my-skill                  # Install from home-relative path
           |""".stripMargin,
@@ -152,8 +153,8 @@ object Main {
           |Examples:
           |  aiskills read commit                         # Read one skill
           |  aiskills read commit review-pr               # Read multiple skills
-          |  aiskills read commit --prefer claude          # Prefer Claude's version
-          |  aiskills read commit --prefer cursor          # Prefer Cursor's version
+          |  aiskills read commit --prefer claude         # Prefer Claude's version
+          |  aiskills read commit --prefer cursor         # Prefer Cursor's version
           |""".stripMargin,
       ) {
         val names  = Opts.arguments[String](metavar = "skill-names")
@@ -195,13 +196,13 @@ object Main {
             |to every other agent directory.
             |
             |Examples:
-            |  aiskills sync                                                    # Interactive wizard
-            |  aiskills sync commit --from claude --to cursor                   # Sync one skill
-            |  aiskills sync commit --from claude --all-agents                  # Sync one skill to all agents
-            |  aiskills sync --from claude --to cursor                          # Sync all skills between two agents
-            |  aiskills sync --from claude --all-agents                         # Sync all skills to all agents
-            |  aiskills sync commit --from universal --to copilot               # Sync from universal to Copilot
-            |  aiskills sync commit --from claude --to cursor -y                # Skip confirmation prompts
+            |  aiskills sync                                         # Interactive wizard
+            |  aiskills sync commit --from claude --to cursor        # Sync one skill
+            |  aiskills sync commit --from claude --all-agents       # Sync one skill to all agents
+            |  aiskills sync --from claude --to cursor               # Sync all skills between two agents
+            |  aiskills sync --from claude --all-agents              # Sync all skills to all agents
+            |  aiskills sync commit --from universal --to copilot    # Sync from universal to Copilot
+            |  aiskills sync commit --from claude --to cursor -y     # Skip confirmation prompts
             |""".stripMargin,
         ) {
           val skillName = Opts.argument[String](metavar = "skill-name").orNone
@@ -224,35 +225,88 @@ object Main {
           }
         }
 
-      val manageCommand = Opts.subcommand(
-        "manage",
-        """Interactively manage (remove) installed skills
-          |
-          |Opens a multi-select picker showing all installed skills. Select
-          |the ones you want to remove. Useful when you need to clean up
-          |several skills at once.
-          |
-          |Examples:
-          |  aiskills manage                              # Interactive skill removal
-          |""".stripMargin,
-      ) {
-        Opts.unit.map(_ => Manage.manageSkills())
-      }
-
       val removeCommand = Opts.subcommand(
         "remove",
-        """Remove a specific skill by name
+        """Remove installed skills
           |
-          |Removes a single installed skill. For removing multiple skills
-          |interactively, use 'aiskills manage' instead.
+          |Without a skill name, opens an interactive multi-select prompt showing
+          |all installed skills. With a skill name, removes from the specified
+          |agent(s) and location(s).
           |
-          |Examples:
-          |  aiskills remove commit                       # Remove the 'commit' skill
-          |  aiskills remove review-pr                    # Remove the 'review-pr' skill
+          |Interactive mode:
+          |  aiskills remove                                    # Interactive multi-select
+          |
+          |Non-interactive mode (--project/--global and --agent are required):
+          |  aiskills remove commit --agent claude --project           # Project, Claude
+          |  aiskills remove commit --agent claude,cursor --project    # Project, Claude, Cursor
+          |  aiskills remove commit --agent claude --global            # Global, Claude
+          |  aiskills remove commit --agent claude,cursor --global     # Global, Claude, Cursor
+          |  aiskills remove commit --agent claude --project --global  # Both scopes, Claude
+          |  aiskills remove commit --agent all --project              # Project, all agents
+          |  aiskills remove commit --agent all --project --global     # Everywhere, all agents
           |""".stripMargin,
       ) {
-        Opts.argument[String](metavar = "skill-name").map { name =>
-          Remove.removeSkill(name)
+        val skillName = Opts.argument[String](metavar = "skill-name").orNone
+        val project   = Opts.flag("project", "Remove from project scope", short = "p").orFalse
+        val global    = Opts.flag("global", "Remove from global scope", short = "g").orFalse
+        val agent     = Opts
+          .option[String](
+            "agent",
+            s"Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
+            short = "a",
+          )
+          .orNone
+        (skillName, project, global, agent).mapN { (sn, p, g, a) =>
+          sn match {
+            case None =>
+              if p || g || a.isDefined then {
+                System.err.println("Error: Must specify a skill name when using --project, --global, or --agent.")
+                System.err.println()
+                System.err.println("  Example: aiskills remove commit --project --agent claude")
+                System.err.println()
+                System.err.println("For interactive removal, run without any flags:")
+                System.err.println("  aiskills remove")
+                sys.exit(1)
+              } else ()
+              Remove.removeInteractive()
+            case Some(name) =>
+              if !p && !g then {
+                System.err.println("Error: Must specify --project and/or --global when removing by name.")
+                System.err.println()
+                System.err.println("  --project (-p)  Remove from project scope (current directory)")
+                System.err.println("  --global  (-g)  Remove from global scope (home directory)")
+                System.err.println()
+                System.err.println("  Example: aiskills remove commit --project --agent claude")
+                sys.exit(1)
+              } else ()
+              if a.isEmpty then {
+                System.err.println("Error: Must specify --agent when removing by name.")
+                System.err.println()
+                System
+                  .err
+                  .println(
+                    s"  --agent (-a)  Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})"
+                  )
+                System.err.println()
+                System.err.println("  Example: aiskills remove commit --project --agent claude")
+                sys.exit(1)
+              } else ()
+              val parsedAgents: List[Agent] = a
+                .map { agentStr =>
+                  aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
+                    case Right(agents) => agents
+                    case Left(invalid) =>
+                      System
+                        .err
+                        .println(
+                          s"Error: Invalid agent '$invalid'. Valid agents: all, ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                        )
+                      sys.exit(1)
+                  }
+                }
+                .getOrElse(Nil)
+              Remove.removeSkill(name, RemoveOptions(project = p, global = g, agent = parsedAgents.some))
+          }
         }
       }
 
@@ -261,7 +315,6 @@ object Main {
         .orElse(readCommand)
         .orElse(updateCommand)
         .orElse(syncCommand)
-        .orElse(manageCommand)
         .orElse(removeCommand)
     }
   )

@@ -15,6 +15,9 @@ object AgentNamesSpec extends Properties {
     example("returns Left for invalid agent", testInvalidAgent),
     example("returns Left for mixed valid and invalid", testMixedValidInvalid),
     example("returns empty list for empty string", testEmptyString),
+    example("parses 'all' as all agents", testAllAgents),
+    example("parses 'all' case-insensitively", testAllCaseInsensitive),
+    example("returns all agents when 'all' appears with other names", testAllWithOtherNames),
   )
 
   private def testSingleAgent: Result =
@@ -40,4 +43,13 @@ object AgentNamesSpec extends Properties {
 
   private def testEmptyString: Result =
     AgentNames.parseAgentNames("") ==== Right(List.empty)
+
+  private def testAllAgents: Result =
+    AgentNames.parseAgentNames("all") ==== Right(Agent.all)
+
+  private def testAllCaseInsensitive: Result =
+    AgentNames.parseAgentNames("ALL") ==== Right(Agent.all)
+
+  private def testAllWithOtherNames: Result =
+    AgentNames.parseAgentNames("claude,codex,all") ==== Right(Agent.all)
 }
