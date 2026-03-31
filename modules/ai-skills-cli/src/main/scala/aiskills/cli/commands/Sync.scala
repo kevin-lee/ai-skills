@@ -18,161 +18,122 @@ object Sync {
         interactiveSync(options.yes)
 
       // Specific skill, from/to specified
-      case (Some(from), Some(targets), Some(name)) =>
+      case (Some((sourceLocation, from)), Some(targets), Some(name)) =>
+        val targetLocations = options.targetLocations.toList
         for target <- targets.filterNot(_ === from) do {
-          syncSingleSkill(name, from, target, options.yes)
+          syncSingleSkillWithLocations(name, from, target, sourceLocation, targetLocations, options.yes)
         }
 
       // All skills from one agent to target(s)
-      case (Some(from), Some(targets), None) =>
+      case (Some((sourceLocation, from)), Some(targets), None) =>
+        val targetLocations = options.targetLocations.toList
         for target <- targets.filterNot(_ === from) do {
-          syncAllSkills(from, target, options.yes)
+          syncAllSkillsWithLocations(from, target, sourceLocation, targetLocations, options.yes)
         }
 
       case _ =>
         System.err.println("Error: Invalid flag combination.".red)
         System.err.println("Usage:")
-        System.err.println("  aiskills sync                                            # Interactive")
-        System.err.println("  aiskills sync <skill> --from <agent> --to <agent>        # One skill")
-        System.err.println("  aiskills sync <skill> --from <agent> --to all            # One skill to all")
-        System.err.println("  aiskills sync --from <agent> --to <agent>                # All skills")
-        System.err.println("  aiskills sync --from <agent> --to all                    # All skills to all")
+        System.err.println("")
+        System.err.println("  <location> should be either 'project' or 'global'")
+        System.err.println("")
+        System
+          .err
+          .println(
+            "  aiskills sync                                                             # Interactive"
+          )
+        System
+          .err
+          .println(
+            "  aiskills sync <skill> --from <location>:<agent> --to <agent> --project    # One skill"
+          )
+        System
+          .err
+          .println(
+            "  aiskills sync <skill> --from <location>:<agent> --to all --global         # One skill to all"
+          )
+        System
+          .err
+          .println(
+            "  aiskills sync --from <location>:<agent> --to <agent> --project            # All skills"
+          )
+        System
+          .err
+          .println(
+            "  aiskills sync --from <location>:<agent> --to all --project --global       # All skills to all"
+          )
         sys.exit(1)
     }
 
-  private def syncSingleSkill(name: String, from: Agent, to: Agent, yes: Boolean): Unit = {
+  private def syncSingleSkillWithLocations(
+    name: String,
+    from: Agent,
+    to: Agent,
+    sourceLocation: SkillLocation,
+    targetLocations: List[SkillLocation],
+    yes: Boolean,
+  ): Unit = {
     if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
     else {
-      // Try project first, then global
-      val sourceSkills =
-        Skills.findSkillsByAgent(from, SkillLocation.Project) ++ Skills.findSkillsByAgent(from, SkillLocation.Global)
+      val sourceSkills = Skills.findSkillsByAgent(from, sourceLocation)
       val skill        = sourceSkills.find(_.name === name)
 
       skill match {
         case None =>
-          System.err.println(s"Error: Skill '$name' not found in ${from.toString} directories".red)
+          System
+            .err
+            .println(
+              s"Error: Skill '$name' not found in ${from.toString} (${sourceLocation.toString.toLowerCase})".red
+            )
           sys.exit(1)
 
         case Some(s) =>
-          val targetDir  = Dirs.getSkillsDir(to, s.location)
-          val targetPath = targetDir / name
+          for targetLocation <- targetLocations do {
+            val targetDir  = Dirs.getSkillsDir(to, targetLocation)
+            val targetPath = targetDir / name
 
-          val proceed =
-            if os.exists(targetPath) && !yes then {
-              aiskills.cli.SigintHandler.install()
-              val result = Prompts.sync.use { prompts =>
-                println(
-                  s"\u26a0 All existing files and folders in '$name' will be removed if you choose to overwrite.".yellow
-                )
-                val pathLabel = Dirs.displaySkillsDir(to, s.location)
-                prompts.confirm(
-                  s"Skill '$name' already exists in ${to.toString} (${s.location.toString.toLowerCase}): $pathLabel. Overwrite?".yellow,
-                  default = false,
-                ) match {
-                  case Completion.Finished(v) =>
-                    if v then os.remove.all(targetPath) else ()
-                    Right(v)
-                  case Completion.Fail(CompletionError.Interrupted) =>
-                    println("\n\nCancelled by user".yellow)
-                    Left(0)
-                  case Completion.Fail(CompletionError.Error(_)) => Right(false)
+            val proceed =
+              if os.exists(targetPath) && !yes then {
+                aiskills.cli.SigintHandler.install()
+                val result = Prompts.sync.use { prompts =>
+                  println(
+                    s"\u26a0 All existing files and folders in '$name' will be removed if you choose to overwrite.".yellow
+                  )
+                  val pathLabel = Dirs.displaySkillsDir(to, targetLocation)
+                  prompts.confirm(
+                    s"Skill '$name' already exists in ${to.toString} (${targetLocation.toString.toLowerCase}): $pathLabel. Overwrite?".yellow,
+                    default = false,
+                  ) match {
+                    case Completion.Finished(v) =>
+                      if v then os.remove.all(targetPath) else ()
+                      Right(v)
+                    case Completion.Fail(CompletionError.Interrupted) =>
+                      println("\n\nCancelled by user".yellow)
+                      Left(0)
+                    case Completion.Fail(CompletionError.Error(_)) => Right(false)
+                  }
                 }
-              }
-              result match {
-                case Left(code) => sys.exit(code)
-                case Right(v) => v
-              }
-            } else if os.exists(targetPath) then {
-              println(s"Overwriting: $name (all existing files and folders will be removed)".dim)
-              os.remove.all(targetPath)
-              true
+                result match {
+                  case Left(code) => sys.exit(code)
+                  case Right(v) => v
+                }
+              } else if os.exists(targetPath) then {
+                println(s"Overwriting: $name (all existing files and folders will be removed)".dim)
+                os.remove.all(targetPath)
+                true
+              } else
+                true
+
+            if proceed then {
+              os.makeDir.all(targetDir)
+              os.copy(s.path, targetPath, replaceExisting = true)
+              println(
+                s"\u2705 Synced: $name -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
+              )
+              AgentsMd.updateAgentsMdForAgent(to, targetLocation)
             } else
-              true
-
-          if proceed then {
-            os.makeDir.all(targetDir)
-            os.copy(s.path, targetPath, replaceExisting = true)
-            println(s"\u2705 Synced: $name (${from.toString} -> ${to.toString})".green)
-
-            AgentsMd.updateAgentsMdForAgent(to, s.location)
-          } else
-            println(s"Skipped: $name".yellow)
-      }
-    }
-  }
-
-  private def syncAllSkills(from: Agent, to: Agent, yes: Boolean): Unit = {
-    if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
-    else {
-      val sourceSkills =
-        Skills.findSkillsByAgent(from, SkillLocation.Project) ++ Skills.findSkillsByAgent(from, SkillLocation.Global)
-
-      if sourceSkills.isEmpty then println(s"No skills found in ${from.toString} directories.".yellow)
-      else {
-        println(s"Syncing ${sourceSkills.length} skill(s) from ${from.toString} to ${to.toString}...".dim)
-
-        val (synced, _) =
-          sourceSkills.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
-            case ((count, bulk), s) =>
-              val targetDir  = Dirs.getSkillsDir(to, s.location)
-              val targetPath = targetDir / s.name
-
-              def doSync(): Int = {
-                if os.exists(targetPath) then {
-                  println(s"Overwriting: ${s.name} (all existing files and folders will be removed)".dim)
-                  os.remove.all(targetPath)
-                } else ()
-                os.makeDir.all(targetDir)
-                os.copy(s.path, targetPath, replaceExisting = true)
-                println(s"\u2705 Synced: ${s.name}".green)
-                count + 1
-              }
-
-              if !os.exists(targetPath) then {
-                os.makeDir.all(targetDir)
-                os.copy(s.path, targetPath, replaceExisting = true)
-                println(s"\u2705 Synced: ${s.name}".green)
-                (count + 1, bulk)
-              } else if yes then (doSync(), bulk)
-              else
-                bulk match {
-                  case BulkDecision.OverwriteAll =>
-                    (doSync(), bulk)
-
-                  case BulkDecision.SkipAll =>
-                    println(s"Skipped: ${s.name}".yellow)
-                    (count, bulk)
-
-                  case BulkDecision.Undecided =>
-                    val pathLabel = Dirs.displaySkillsDir(to, s.location)
-                    OverwritePrompt.askOverwriteChoice(
-                      s.name,
-                      s"Skill '${s.name}' already exists in ${to.toString} (${s.location.toString.toLowerCase}): $pathLabel. What would you like to do?",
-                    ) match {
-                      case Left(code) => sys.exit(code)
-
-                      case Right(OverwriteChoice.Yes) =>
-                        (doSync(), BulkDecision.Undecided)
-
-                      case Right(OverwriteChoice.No) =>
-                        println(s"Skipped: ${s.name}".yellow)
-                        (count, BulkDecision.Undecided)
-
-                      case Right(OverwriteChoice.YesToAll) =>
-                        (doSync(), BulkDecision.OverwriteAll)
-
-                      case Right(OverwriteChoice.NoToAll) =>
-                        println(s"Skipped: ${s.name}".yellow)
-                        (count, BulkDecision.SkipAll)
-                    }
-                }
+              println(s"Skipped: $name".yellow)
           }
-
-        println(s"\n\u2705 Sync complete: $synced skill(s) synced from ${from.toString} to ${to.toString}".green)
-
-        // Update AGENTS.md for target if needed
-        AgentsMd.updateAgentsMdForAgent(to, SkillLocation.Project)
-        AgentsMd.updateAgentsMdForAgent(to, SkillLocation.Global)
       }
     }
   }

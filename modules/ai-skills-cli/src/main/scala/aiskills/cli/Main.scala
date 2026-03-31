@@ -278,31 +278,70 @@ object Main {
             |
             |Copies skills from one agent's directory to another. Without
             |arguments, runs an interactive wizard to pick source/target agents.
-            |Use --from / --to for scripted usage, and --to all to broadcast
-            |to every other agent directory.
+            |Use --from / --to / --project / --global for scripted usage.
             |
             |Examples:
-            |  aiskills sync                                         # Interactive wizard
-            |  aiskills sync commit --from claude --to cursor        # Sync one skill
-            |  aiskills sync commit --from claude --to all           # Sync one skill to all agents
-            |  aiskills sync --from claude --to cursor               # Sync all skills between two agents
-            |  aiskills sync --from claude --to all                  # Sync all skills to all agents
-            |  aiskills sync commit --from universal --to copilot    # Sync from universal to Copilot
-            |  aiskills sync commit --from claude --to cursor -y     # Skip confirmation prompts
+            |  aiskills sync                                                              # Interactive wizard
+            |  aiskills sync --from project:claude --to cursor --project                  # All skills, project -> project
+            |  aiskills sync --from global:claude --to cursor,windsurf --global           # All skills, global -> global
+            |  aiskills sync --from project:claude --to all --project --global            # All skills, project -> both
+            |  aiskills sync commit --from global:claude --to cursor --project --global   # One skill, global -> both
+            |  aiskills sync --from project:universal --to copilot --global -y            # Skip confirmation prompts
             |""".stripMargin,
         ) {
           val skillName = Opts.argument[String](metavar = "skill-name").orNone
-          val from      = Opts.option[String]("from", "Source agent").orNone
+          val from      = Opts
+            .option[String]("from", "Source location and agent (format: <project|global>:<agent>)")
+            .orNone
           val to        = Opts
             .option[String](
               "to",
               s"Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
             )
             .orNone
+          val project   = Opts.flag("project", "Sync to project scope (current directory)", short = "p").orFalse
+          val global    = Opts.flag("global", "Sync to global scope (home directory)", short = "g").orFalse
           val yes       = Opts.flag("yes", "Skip confirmation", short = "y").orFalse
-          (skillName, from, to, yes).mapN { (sn, f, t, y) =>
-            val fromAgent                     = f.flatMap(Agent.fromString)
-            val parsedTo: Option[List[Agent]] = t.map { toStr =>
+          (skillName, from, to, project, global, yes).mapN { (sn, f, t, p, g, y) =>
+            val parsedFrom: Option[(SkillLocation, Agent)] = f.map { fromStr =>
+              fromStr.split(":", 2) match {
+                case Array(locStr, agentStr) =>
+                  val location = locStr.toLowerCase match {
+                    case "project" => SkillLocation.Project
+                    case "global" => SkillLocation.Global
+                    case other =>
+                      System.err.println(s"Error: Invalid source location '$other' in --from value.")
+                      System.err.println()
+                      System.err.println("  --from must be in the format <location>:<agent>")
+                      System.err.println("  where <location> is 'project' or 'global'.")
+                      System.err.println()
+                      System.err.println("  Examples:")
+                      System.err.println("    --from project:claude")
+                      System.err.println("    --from global:universal")
+                      sys.exit(1)
+                  }
+                  val agent    = Agent.fromString(agentStr).getOrElse {
+                    System
+                      .err
+                      .println(
+                        s"Error: Invalid agent '$agentStr' in --from value. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+                      )
+                    sys.exit(1)
+                  }
+                  (location, agent)
+                case _ =>
+                  System.err.println(s"Error: Invalid --from format '$fromStr'.")
+                  System.err.println()
+                  System.err.println("  --from must be in the format <location>:<agent>")
+                  System.err.println("  where <location> is 'project' or 'global'.")
+                  System.err.println()
+                  System.err.println("  Examples:")
+                  System.err.println("    --from project:claude")
+                  System.err.println("    --from global:universal")
+                  sys.exit(1)
+              }
+            }
+            val parsedTo: Option[List[Agent]]              = t.map { toStr =>
               aiskills.core.utils.AgentNames.parseAgentNames(toStr) match {
                 case Right(agents) => agents
                 case Left(invalid) =>
@@ -314,11 +353,27 @@ object Main {
                   sys.exit(1)
               }
             }
+
+            val locations: Set[SkillLocation] = Set.concat(
+              if p then Set(SkillLocation.Project) else Set.empty,
+              if g then Set(SkillLocation.Global) else Set.empty,
+            )
+            if parsedFrom.isDefined && parsedTo.isDefined && locations.isEmpty then {
+              System.err.println("Error: Must specify --project and/or --global when using --from/--to.")
+              System.err.println()
+              System.err.println("  --project (-p)  Sync to project scope (current directory)")
+              System.err.println("  --global  (-g)  Sync to global scope (home directory)")
+              System.err.println()
+              System.err.println("  Example: aiskills sync --from project:claude --to cursor --project")
+              sys.exit(1)
+            } else ()
+
             Sync.syncSkills(
               SyncOptions(
                 skillName = sn,
-                from = fromAgent,
+                from = parsedFrom,
                 to = parsedTo,
+                targetLocations = locations,
                 yes = y,
               )
             )
