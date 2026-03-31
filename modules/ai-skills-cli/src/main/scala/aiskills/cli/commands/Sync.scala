@@ -12,16 +12,31 @@ object Sync {
 
   /** Sync skills between agent directories. */
   def syncSkills(options: SyncOptions): Unit =
-    (options.from, options.to, options.skillName) match {
+    (options.from, options.to, options.skillNames) match {
       // Interactive mode: no flags provided
       case (None, None, None) =>
         interactiveSync(options.yes)
 
-      // Specific skill, from/to specified
-      case (Some((sourceLocation, from)), Some(targets), Some(name)) =>
+      // Specific skill(s), from/to specified
+      case (Some((sourceLocation, from)), Some(targets), Some(names)) =>
         val targetLocations = options.targetLocations.toList
+        val sourceSkills    = Skills.findSkillsByAgent(from, sourceLocation)
+
+        val (notFound, found) = names.partitionMap { name =>
+          sourceSkills.find(_.name === name).toRight(name)
+        }
+
+        if notFound.nonEmpty then {
+          System
+            .err
+            .println(
+              s"Error: Skill(s) not found in ${from.toString} (${sourceLocation.toString.toLowerCase}): ${notFound.mkString(", ")}".red
+            )
+          sys.exit(1)
+        }
+
         for target <- targets.filterNot(_ === from) do {
-          syncSingleSkillWithLocations(name, from, target, sourceLocation, targetLocations, options.yes)
+          syncSelectedSkillsWithLocations(found, from, target, sourceLocation, targetLocations, options.yes)
         }
 
       // All skills from one agent to target(s)
@@ -40,103 +55,25 @@ object Sync {
         System
           .err
           .println(
-            "  aiskills sync                                                             # Interactive"
+            "  aiskills sync                                                                    # Interactive"
           )
         System
           .err
           .println(
-            "  aiskills sync <skill> --from <location>:<agent> --to <agent> --project    # One skill"
+            "  aiskills sync <skill>[,<skill>...] --from <location>:<agent> --to <agent> --project    # Specific skill(s)"
           )
         System
           .err
           .println(
-            "  aiskills sync <skill> --from <location>:<agent> --to all --global         # One skill to all"
+            "  aiskills sync --from <location>:<agent> --to <agent> --project                   # All skills"
           )
         System
           .err
           .println(
-            "  aiskills sync --from <location>:<agent> --to <agent> --project            # All skills"
-          )
-        System
-          .err
-          .println(
-            "  aiskills sync --from <location>:<agent> --to all --project --global       # All skills to all"
+            "  aiskills sync --from <location>:<agent> --to all --project --global              # All skills to all"
           )
         sys.exit(1)
     }
-
-  private def syncSingleSkillWithLocations(
-    name: String,
-    from: Agent,
-    to: Agent,
-    sourceLocation: SkillLocation,
-    targetLocations: List[SkillLocation],
-    yes: Boolean,
-  ): Unit = {
-    if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
-    else {
-      val sourceSkills = Skills.findSkillsByAgent(from, sourceLocation)
-      val skill        = sourceSkills.find(_.name === name)
-
-      skill match {
-        case None =>
-          System
-            .err
-            .println(
-              s"Error: Skill '$name' not found in ${from.toString} (${sourceLocation.toString.toLowerCase})".red
-            )
-          sys.exit(1)
-
-        case Some(s) =>
-          for targetLocation <- targetLocations do {
-            val targetDir  = Dirs.getSkillsDir(to, targetLocation)
-            val targetPath = targetDir / name
-
-            val proceed =
-              if os.exists(targetPath) && !yes then {
-                aiskills.cli.SigintHandler.install()
-                val result = Prompts.sync.use { prompts =>
-                  println(
-                    s"\u26a0 All existing files and folders in '$name' will be removed if you choose to overwrite.".yellow
-                  )
-                  val pathLabel = Dirs.displaySkillsDir(to, targetLocation)
-                  prompts.confirm(
-                    s"Skill '$name' already exists in ${to.toString} (${targetLocation.toString.toLowerCase}): $pathLabel. Overwrite?".yellow,
-                    default = false,
-                  ) match {
-                    case Completion.Finished(v) =>
-                      if v then os.remove.all(targetPath) else ()
-                      Right(v)
-                    case Completion.Fail(CompletionError.Interrupted) =>
-                      println("\n\nCancelled by user".yellow)
-                      Left(0)
-                    case Completion.Fail(CompletionError.Error(_)) => Right(false)
-                  }
-                }
-                result match {
-                  case Left(code) => sys.exit(code)
-                  case Right(v) => v
-                }
-              } else if os.exists(targetPath) then {
-                println(s"Overwriting: $name (all existing files and folders will be removed)".dim)
-                os.remove.all(targetPath)
-                true
-              } else
-                true
-
-            if proceed then {
-              os.makeDir.all(targetDir)
-              os.copy(s.path, targetPath, replaceExisting = true)
-              println(
-                s"\u2705 Synced: $name -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
-              )
-              AgentsMd.updateAgentsMdForAgent(to, targetLocation)
-            } else
-              println(s"Skipped: $name".yellow)
-          }
-      }
-    }
-  }
 
   private def syncAllSkillsWithLocations(
     from: Agent,
