@@ -286,6 +286,7 @@ object Main {
             |  aiskills sync --from global:claude --to cursor,windsurf --global           # All skills, global -> global
             |  aiskills sync --from project:claude --to all --project --global            # All skills, project -> both
             |  aiskills sync commit --from global:claude --to cursor --project --global   # One skill, global -> both
+            |  aiskills sync a,b,c --from project:claude --to codex,gemini --project      # Multiple skills
             |  aiskills sync --from project:universal --to copilot --global -y            # Skip confirmation prompts
             |""".stripMargin,
         ) {
@@ -370,7 +371,7 @@ object Main {
 
             Sync.syncSkills(
               SyncOptions(
-                skillName = sn,
+                skillNames = sn.map(_.split(",").toList.map(_.trim).filter(_.nonEmpty)),
                 from = parsedFrom,
                 to = parsedTo,
                 targetLocations = locations,

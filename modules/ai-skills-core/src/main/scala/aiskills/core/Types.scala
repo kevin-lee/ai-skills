@@ -178,7 +178,7 @@ final case class RemoveOptions(
 )
 
 final case class SyncOptions(
-  skillName: Option[String],
+  skillNames: Option[List[String]],
   from: Option[(SkillLocation, Agent)],
   to: Option[List[Agent]],
   targetLocations: Set[SkillLocation],
