@@ -12,38 +12,40 @@ object Sync {
 
   /** Sync skills between agent directories. */
   def syncSkills(options: SyncOptions): Unit =
-    (options.from, options.to, options.skillNames) match {
+    (options.from, options.to) match {
       // Interactive mode: no flags provided
-      case (None, None, None) =>
+      case (None, None) =>
         interactiveSync(options.yes)
 
-      // Specific skill(s), from/to specified
-      case (Some((sourceLocation, from)), Some(targets), Some(names)) =>
+      // Non-interactive: from/to specified
+      case (Some((sourceLocation, from)), Some(targets)) =>
         val targetLocations = options.targetLocations.toList
-        val sourceSkills    = Skills.findSkillsByAgent(from, sourceLocation)
 
-        val (notFound, found) = names.partitionMap { name =>
-          sourceSkills.find(_.name === name).toRight(name)
-        }
+        if options.skillNames.nonEmpty then {
+          // Specific skill(s)
+          val sourceSkills = Skills.findSkillsByAgent(from, sourceLocation)
 
-        if notFound.nonEmpty then {
-          System
-            .err
-            .println(
-              s"Error: Skill(s) not found in ${from.toString} (${sourceLocation.toString.toLowerCase}): ${notFound.mkString(", ")}".red
-            )
-          sys.exit(1)
-        }
+          val (notFound, found) = options.skillNames.partitionMap { name =>
+            sourceSkills.find(_.name === name).toRight(name)
+          }
 
-        for target <- targets.filterNot(_ === from) do {
-          syncSelectedSkillsWithLocations(found, from, target, sourceLocation, targetLocations, options.yes)
-        }
+          if notFound.nonEmpty then {
+            System
+              .err
+              .println(
+                s"Error: Skill(s) not found in ${from.toString} (${sourceLocation.toString.toLowerCase}): ${notFound.mkString(", ")}".red
+              )
+            sys.exit(1)
+          }
 
-      // All skills from one agent to target(s)
-      case (Some((sourceLocation, from)), Some(targets), None) =>
-        val targetLocations = options.targetLocations.toList
-        for target <- targets.filterNot(_ === from) do {
-          syncAllSkillsWithLocations(from, target, sourceLocation, targetLocations, options.yes)
+          for target <- targets.filterNot(_ === from) do {
+            syncSelectedSkillsWithLocations(found, from, target, sourceLocation, targetLocations, options.yes)
+          }
+        } else {
+          // All skills
+          for target <- targets.filterNot(_ === from) do {
+            syncAllSkillsWithLocations(from, target, sourceLocation, targetLocations, options.yes)
+          }
         }
 
       case _ =>
@@ -60,7 +62,7 @@ object Sync {
         System
           .err
           .println(
-            "  aiskills sync <skill>[,<skill>...] --from <location>:<agent> --to <agent> --project    # Specific skill(s)"
+            "  aiskills sync <skill> [<skill>...] --from <location>:<agent> --to <agent> --project    # Specific skill(s)"
           )
         System
           .err
