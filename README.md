@@ -104,16 +104,17 @@ aiskills <command> [options]
 #### `list` — List installed skills
 
 ```bash
-aiskills list                            # Interactive scope & agent selection
-aiskills list --project                  # Project skills only
-aiskills list --global                   # Global skills only
-aiskills list --agent claude             # Claude only (both scopes)
-aiskills list --agent claude,cursor      # Multiple agents
-aiskills list --all-agents               # All agents
-aiskills list --all-agents --global      # Global skills, all agents
+aiskills list                                    # Interactive scope & agent selection
+aiskills list --project                          # Project skills, all agents
+aiskills list --global                           # Global skills, all agents
+aiskills list --project --global                 # Both scopes, all agents
+aiskills list --agent claude --project           # Project skills, Claude only
+aiskills list --agent all --project              # Project skills, all agents (no prompt)
+aiskills list --agent all --global               # Global skills, all agents
+aiskills list --agent all --project --global     # Both scopes, all agents
 ```
 
-Displays installed skills with their names, descriptions, agent, scope (project/global), and file system paths. Without flags, an interactive prompt lets you select the scope and agent(s).
+Displays installed skills with their names, descriptions, agent, scope (project/global), and file system paths. Without flags, an interactive prompt lets you select the scope and agent(s). When using `--agent`, `--project` and/or `--global` must be specified.
 
 Options:
 
@@ -121,8 +122,7 @@ Options:
 |-------------------------|---------------------------------------------------------------------------------------------------|
 | `-p`, `--project`       | Show project skills only                                                                          |
 | `-g`, `--global`        | Show global skills only                                                                           |
-| `-a`, `--agent <names>` | Filter by agent(s), comma-separated (universal, claude, cursor, codex, gemini, windsurf, copilot) |
-| `--all-agents`          | Show skills for all agents (skips agent prompt)                                                   |
+| `-a`, `--agent <names>` | Filter by agent(s), comma-separated or `all` (universal, claude, cursor, codex, gemini, windsurf, copilot) |
 
 #### `install <source>` — Install skills
 
@@ -137,7 +137,7 @@ Install from a Git URL:
 
 ```bash
 aiskills install https://github.com/owner/repo.git
-aiskills install git@github.com:owner/repo.git
+aiskills install git@github.com:owner/repo.git         # Useful for private repos
 ```
 
 Install from a local path:
@@ -147,44 +147,53 @@ aiskills install ./path/to/skill-directory
 aiskills install ~/my-skills/my-skill
 ```
 
-Target specific agent(s) or all agents:
+Target specific agent(s) and location(s):
 
 ```bash
-aiskills install owner/repo                            # Interactive agent & location selection
-aiskills install owner/repo --agent claude             # Claude only
-aiskills install owner/repo --agent claude,cursor      # Claude and Cursor
-aiskills install owner/repo --all-agents               # All agent directories
-aiskills install owner/repo --agent gemini --global    # Global Gemini
+aiskills install owner/repo                                    # Interactive agent & location selection
+aiskills install owner/repo --agent claude --project           # Project, Claude
+aiskills install owner/repo --agent claude --global            # Global, Claude
+aiskills install owner/repo --agent claude --project --global  # Both scopes, Claude
+aiskills install owner/repo --agent claude,cursor --project    # Project, Claude + Cursor
+aiskills install owner/repo --agent all --project              # Project, all agents
+aiskills install owner/repo --agent all --global               # Global, all agents
+aiskills install owner/repo --agent all --project --global     # Both scopes, all agents
 ```
 
-Without `--agent` or `--all-agents`, an interactive prompt lets you choose the target agent(s) and location. If a skill already exists, you are prompted to overwrite or skip.
+Without `--agent`, an interactive prompt lets you choose the target agent(s) and location. If a skill already exists, you are prompted to overwrite or skip. When using `--agent`, `--project` and/or `--global` must be specified.
 
 Options:
 
-| Flag                    | Description                                                                          |
-|-------------------------|--------------------------------------------------------------------------------------|
-| `-a`, `--agent <names>` | Target agent(s), comma-separated (universal, claude, cursor, codex, gemini, windsurf, copilot) |
-| `--all-agents`          | Install to all agent directories                                                     |
-| `-g`, `--global`        | Install globally instead of project-local                                            |
-| `-y`, `--yes`           | Skip interactive selection, install all skills found                                 |
+| Flag                    | Description                                                                                    |
+|-------------------------|------------------------------------------------------------------------------------------------|
+| `-a`, `--agent <names>` | Target agent(s), comma-separated or `all` (universal, claude, cursor, codex, gemini, windsurf, copilot) |
+| `-p`, `--project`       | Install to project scope (current directory)                                                   |
+| `-g`, `--global`        | Install to global scope (home directory)                                                       |
+| `-y`, `--yes`           | Skip interactive selection, install all skills found                                           |
 
-#### `read <skill-names>` — Read skills to stdout
+#### `read [skill-names]` — Read skills to stdout
+
+Without arguments, opens an interactive prompt to select scope, agents, and skills. With skill names, reads from the specified agent(s) and location(s). In non-interactive mode, `--project`/`--global` and `--agent` are all required.
 
 ```bash
-aiskills read my-skill
-aiskills read skill-a skill-b
-aiskills read my-skill --prefer cursor    # Prefer Cursor's copy if duplicates exist
+aiskills read                                              # Interactive scope, agent & skill selection
+aiskills read commit --agent claude --project              # Project, Claude
+aiskills read commit --agent claude --global               # Global, Claude
+aiskills read commit --agent claude --project --global     # Both scopes, Claude
+aiskills read commit --agent claude,cursor --project       # Project, Claude + Cursor
+aiskills read commit --agent all --project                 # Project, all agents
+aiskills read commit --agent all --project --global        # Both scopes, all agents
 ```
 
 Outputs the SKILL.md content. Intended for AI agents to consume skill definitions.
 
-If the same skill exists in multiple agent directories, the first match by priority order is used. A note is printed to stderr listing alternative locations.
-
 Options:
 
-| Flag               | Description                               |
-|--------------------|-------------------------------------------|
-| `--prefer <agent>` | Prefer skills from this agent's directory |
+| Flag                    | Description                                                                                    |
+|-------------------------|------------------------------------------------------------------------------------------------|
+| `-a`, `--agent <names>` | Target agent(s), comma-separated or `all` (universal, claude, cursor, codex, gemini, windsurf, copilot) |
+| `-p`, `--project`       | Read from project scope (current directory)                                                    |
+| `-g`, `--global`        | Read from global scope (home directory)                                                        |
 
 #### `update [skill-names]` — Update installed skills
 
@@ -197,38 +206,58 @@ Re-fetches skills from their original source (git or local).
 
 #### `sync` — Sync skills between agents
 
-Copy skills from one agent's directory to another. If a skill already exists in the target, you are prompted to overwrite or skip.
+Copy skills from one agent's directory to another. If a skill already exists in the target, you are prompted to overwrite or skip. In non-interactive mode, `--from`, `--to`, and `--project`/`--global` are all required.
 
 ```bash
-aiskills sync                                              # Interactive mode
-aiskills sync my-skill --from claude --to cursor           # One skill, one target
-aiskills sync my-skill --from claude --all-agents          # One skill, all other agents
-aiskills sync --from claude --to cursor                    # All skills from Claude to Cursor
-aiskills sync --from claude --all-agents                   # All Claude skills to all others
+aiskills sync                                                                # Interactive mode
+aiskills sync --from project:claude --to cursor --project                    # All skills, project -> project
+aiskills sync --from global:claude --to cursor,windsurf --global             # All skills, global -> global
+aiskills sync --from project:claude --to all --project --global              # All skills, project -> both
+aiskills sync commit --from global:claude --to cursor --project --global     # One skill, global -> both
+aiskills sync a,b,c --from project:claude --to codex,gemini --project       # Multiple skills
+aiskills sync --from project:universal --to copilot --global -y              # Skip confirmation prompts
 ```
 
 Options:
 
-| Flag             | Description                         |
-|------------------|-------------------------------------|
-| `--from <agent>` | Source agent                        |
-| `--to <agent>`   | Target agent                        |
-| `--all-agents`   | Sync to all other agent directories |
-| `-y`, `--yes`    | Skip confirmation prompts           |
+| Flag                        | Description                                                                                           |
+|-----------------------------|-------------------------------------------------------------------------------------------------------|
+| `--from <location>:<agent>` | Source location and agent (e.g., `project:claude`, `global:universal`)                                |
+| `--to <agent>`              | Target agent(s), comma-separated or `all` (universal, claude, cursor, codex, gemini, windsurf, copilot) |
+| `-p`, `--project`           | Sync to project scope (current directory)                                                             |
+| `-g`, `--global`            | Sync to global scope (home directory)                                                                 |
+| `-y`, `--yes`               | Skip confirmation prompts                                                                             |
 
-#### `manage` — Interactive skill management
+#### `remove [skill-name]` — Remove installed skills
 
-```bash
-aiskills manage
-```
-
-Opens an interactive multi-select prompt to choose and remove installed skills.
-
-#### `remove <skill-name>` — Remove a skill
+Without a skill name, opens an interactive multi-select prompt. With a skill name, `--project`/`--global` and `--agent` are all required.
 
 ```bash
-aiskills remove my-skill
+aiskills remove                                                  # Interactive multi-select
+aiskills remove commit --agent claude --project                  # Project, Claude
+aiskills remove commit --agent claude --global                   # Global, Claude
+aiskills remove commit --agent claude,cursor --project           # Project, Claude + Cursor
+aiskills remove commit --agent claude,cursor,windsurf --global   # Global, Claude, Cursor, Windsurf
+aiskills remove commit --agent claude --project --global         # Both scopes, Claude
+aiskills remove commit --agent all --project                     # Project, all agents
+aiskills remove commit --agent all --project --global            # Remove everywhere
 ```
+
+Validation errors (all three are required together in non-interactive mode):
+
+```
+aiskills remove commit                    # ERROR: must specify --project/--global
+aiskills remove commit --project          # ERROR: must specify --agent
+aiskills remove --agent claude --project  # ERROR: must specify skill name
+```
+
+Options:
+
+| Flag                    | Description                                                                                             |
+|-------------------------|---------------------------------------------------------------------------------------------------------|
+| `-p`, `--project`       | Remove from project scope                                                                               |
+| `-g`, `--global`        | Remove from global scope                                                                                |
+| `-a`, `--agent <names>` | Target agent(s), comma-separated or `all` (universal, claude, cursor, codex, gemini, windsurf, copilot) |
 
 ## Skill Format
 
@@ -272,7 +301,7 @@ Skills are searched in the following directories, in priority order:
 | 13       | `~/.gemini/skills/`             | Global Gemini      |
 | 14       | `~/.codeium/windsurf/skills/`   | Global Windsurf    |
 
-Skills in multiple directories are all shown by `list`. For `read`, the first match by priority is used (override with `--prefer`).
+Skills in multiple directories are all shown by `list`. For `read`, use `--agent` with `--project`/`--global` to target specific directories.
 
 ## Project Structure
 
