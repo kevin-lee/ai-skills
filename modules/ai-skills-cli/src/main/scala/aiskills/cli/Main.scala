@@ -286,24 +286,24 @@ object Main {
             |  aiskills sync --from global:claude --to cursor,windsurf --global           # All skills, global -> global
             |  aiskills sync --from project:claude --to all --project --global            # All skills, project -> both
             |  aiskills sync commit --from global:claude --to cursor --project --global   # One skill, global -> both
-            |  aiskills sync a,b,c --from project:claude --to codex,gemini --project      # Multiple skills
+            |  aiskills sync a b c --from project:claude --to codex,gemini --project      # Multiple skills
             |  aiskills sync --from project:universal --to copilot --global -y            # Skip confirmation prompts
             |""".stripMargin,
         ) {
-          val skillName = Opts.argument[String](metavar = "skill-name").orNone
-          val from      = Opts
+          val skillNames = Opts.arguments[String](metavar = "skill-names").orEmpty
+          val from       = Opts
             .option[String]("from", "Source location and agent (format: <project|global>:<agent>)")
             .orNone
-          val to        = Opts
+          val to         = Opts
             .option[String](
               "to",
               s"Target agent(s), comma-separated or 'all' (${Agent.all.map(_.toString.toLowerCase).mkString(", ")})",
             )
             .orNone
-          val project   = Opts.flag("project", "Sync to project scope (current directory)", short = "p").orFalse
-          val global    = Opts.flag("global", "Sync to global scope (home directory)", short = "g").orFalse
-          val yes       = Opts.flag("yes", "Skip confirmation", short = "y").orFalse
-          (skillName, from, to, project, global, yes).mapN { (sn, f, t, p, g, y) =>
+          val project    = Opts.flag("project", "Sync to project scope (current directory)", short = "p").orFalse
+          val global     = Opts.flag("global", "Sync to global scope (home directory)", short = "g").orFalse
+          val yes        = Opts.flag("yes", "Skip confirmation", short = "y").orFalse
+          (skillNames, from, to, project, global, yes).mapN { (sn, f, t, p, g, y) =>
             val parsedFrom: Option[(SkillLocation, Agent)] = f.map { fromStr =>
               fromStr.split(":", 2) match {
                 case Array(locStr, agentStr) =>
@@ -371,7 +371,7 @@ object Main {
 
             Sync.syncSkills(
               SyncOptions(
-                skillNames = sn.map(_.split(",").toList.map(_.trim).filter(_.nonEmpty)),
+                skillNames = sn,
                 from = parsedFrom,
                 to = parsedTo,
                 targetLocations = locations,
