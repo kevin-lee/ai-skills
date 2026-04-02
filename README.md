@@ -209,13 +209,13 @@ Re-fetches skills from their original source (git or local).
 Copy skills from one agent's directory to another. If a skill already exists in the target, you are prompted to overwrite or skip. In non-interactive mode, `--from`, `--to`, and `--project`/`--global` are all required.
 
 ```bash
-aiskills sync                                                                # Interactive mode
-aiskills sync --from project:claude --to cursor --project                    # All skills, project -> project
-aiskills sync --from global:claude --to cursor,windsurf --global             # All skills, global -> global
-aiskills sync --from project:claude --to all --project --global              # All skills, project -> both
-aiskills sync commit --from global:claude --to cursor --project --global     # One skill, global -> both
-aiskills sync a,b,c --from project:claude --to codex,gemini --project       # Multiple skills
-aiskills sync --from project:universal --to copilot --global -y              # Skip confirmation prompts
+aiskills sync                                                                 # Interactive mode
+aiskills sync --from project:claude --to cursor --project                     # All skills, project -> project
+aiskills sync --from global:claude --to cursor,windsurf --global              # All skills, global -> global
+aiskills sync --from project:claude --to all --project --global               # All skills, project -> both
+aiskills sync commit --from global:claude --to cursor --project --global      # One skill, global -> both
+aiskills sync skill1 skill2 skill3 --from global:claude --to codex --project  # Multiple skills
+aiskills sync --from project:universal --to copilot --global -y               # Skip confirmation prompts
 ```
 
 Options:
