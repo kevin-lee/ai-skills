@@ -1,10 +1,11 @@
 package aiskills.cli.commands
 
-import aiskills.core.{RemoveOptions, SkillLocation}
+import aiskills.cli.CliDefaults
 import aiskills.core.utils.{AgentsMd, Dirs, Skills}
+import aiskills.core.{RemoveOptions, SkillLocation}
 import cats.syntax.all.*
-import extras.scala.io.syntax.color.*
 import cue4s.*
+import extras.scala.io.syntax.color.*
 
 object Remove {
 
@@ -26,7 +27,7 @@ object Remove {
 
       aiskills.cli.SigintHandler.install()
       val result = Prompts.sync.use { prompts =>
-        prompts.multiChoiceNoneSelected("Select skills to remove", labels) match {
+        prompts.multiChoiceNoneSelected("Select skills to remove", labels, CliDefaults.multiChoiceModify) match {
           case Completion.Finished(selectedLabels) =>
             if selectedLabels.isEmpty then println("No skills selected for removal.".yellow)
             else {

@@ -1,10 +1,11 @@
 package aiskills.cli.commands
 
-import aiskills.core.{Agent, ReadOptions, Skill, SkillLocation, SkillLocationInfo}
+import aiskills.cli.CliDefaults
 import aiskills.core.utils.{Dirs, SkillNames, Skills}
+import aiskills.core.{Agent, ReadOptions, Skill, SkillLocation, SkillLocationInfo}
 import cats.syntax.all.*
-import extras.scala.io.syntax.color.*
 import cue4s.*
+import extras.scala.io.syntax.color.*
 
 object Read {
 
@@ -162,7 +163,7 @@ object Read {
     }
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select agent(s)", labels) match {
+      prompts.multiChoiceNoneSelected("Select agent(s)", labels, CliDefaults.multiChoiceModify) match {
         case Completion.Finished(selectedLabels) =>
           val selected = agentsWithCounts
             .filter { (agent, _) =>
@@ -193,7 +194,7 @@ object Read {
 
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select skill(s) to read", labels) match {
+      prompts.multiChoiceNoneSelected("Select skill(s) to read", labels, CliDefaults.multiChoiceModify) match {
         case Completion.Finished(selectedLabels) =>
           val selectedIndices = selectedLabels.flatMap { label =>
             labels.zipWithIndex.find { case (l, _) => l === label }.map { case (_, idx) => idx }

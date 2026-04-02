@@ -1,13 +1,12 @@
 package aiskills.cli.commands
 
-import aiskills.core.{Agent, InstallOptions, InstallSourceInfo, SkillLocation, SkillSourceMetadata, SkillSourceType}
-import aiskills.core.utils.{AgentsMd, MarketplaceSkills, SkillMetadata, Yaml}
-import cats.syntax.all.*
-import extras.scala.io.syntax.color.*
-import cue4s.*
-
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
-
+import aiskills.cli.CliDefaults
+import aiskills.core.utils.{AgentsMd, MarketplaceSkills, SkillMetadata, Yaml}
+import aiskills.core.*
+import cats.syntax.all.*
+import cue4s.*
+import extras.scala.io.syntax.color.*
 import just.spinner.*
 
 import scala.util.{Failure, Success, Try}
@@ -80,7 +79,7 @@ object Install {
 
     aiskills.cli.SigintHandler.install()
     val result = Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select target agent(s)", agentLabels) match {
+      prompts.multiChoiceNoneSelected("Select target agent(s)", agentLabels, CliDefaults.multiChoiceModify) match {
         case Completion.Finished(selectedLabels) =>
           val selected = Agent.all.filter(a => selectedLabels.contains(a.toString))
           if selected.isEmpty then {
@@ -111,7 +110,7 @@ object Install {
 
     aiskills.cli.SigintHandler.install()
     val result = Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select install location", locationLabels) match {
+      prompts.multiChoiceNoneSelected("Select install location", locationLabels, CliDefaults.multiChoiceModify) match {
         case Completion.Finished(selectedLabels) =>
           if selectedLabels.isEmpty then {
             println("No location selected. Defaulting to project.".yellow)
@@ -488,7 +487,7 @@ object Install {
 
         aiskills.cli.SigintHandler.install()
         val result = Prompts.sync.use { prompts =>
-          prompts.multiChoiceAllSelected("Select skills to install", labels) match {
+          prompts.multiChoiceAllSelected("Select skills to install", labels, CliDefaults.multiChoiceModify) match {
             case Completion.Finished(selectedLabels) =>
               if selectedLabels.isEmpty then {
                 println("No skills selected. Installation cancelled.".yellow)

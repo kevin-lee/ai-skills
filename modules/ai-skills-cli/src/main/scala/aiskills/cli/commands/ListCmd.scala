@@ -1,10 +1,11 @@
 package aiskills.cli.commands
 
-import aiskills.core.{Agent, ListOptions, Skill, SkillLocation}
+import aiskills.cli.CliDefaults
 import aiskills.core.utils.{Dirs, Skills}
+import aiskills.core.{Agent, ListOptions, Skill, SkillLocation}
 import cats.syntax.all.*
-import extras.scala.io.syntax.color.*
 import cue4s.*
+import extras.scala.io.syntax.color.*
 
 object ListCmd {
 
@@ -102,7 +103,7 @@ object ListCmd {
     }
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select agent(s)", labels) match {
+      prompts.multiChoiceNoneSelected("Select agent(s)", labels, CliDefaults.multiChoiceModify) match {
         case Completion.Finished(selectedLabels) =>
           val selected = agentsWithCounts
             .filter { (agent, _) =>

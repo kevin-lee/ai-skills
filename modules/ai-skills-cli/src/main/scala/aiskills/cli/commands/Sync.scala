@@ -1,12 +1,12 @@
 package aiskills.cli.commands
 
-import aiskills.core.{Agent, Skill, SkillLocation, SyncOptions}
+import OverwritePrompt.{BulkDecision, OverwriteChoice}
+import aiskills.cli.CliDefaults
 import aiskills.core.utils.{AgentsMd, Dirs, Skills, TerminalWidth}
+import aiskills.core.{Agent, Skill, SkillLocation, SyncOptions}
 import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
-
-import OverwritePrompt.{BulkDecision, OverwriteChoice}
 
 object Sync {
 
@@ -347,7 +347,11 @@ object Sync {
             val selectedSkills = {
               aiskills.cli.SigintHandler.install()
               val result = Prompts.sync.use { prompts =>
-                prompts.multiChoiceAllSelected("Select skills to sync", skillLabels) match {
+                prompts.multiChoiceAllSelected(
+                  "Select skills to sync",
+                  skillLabels,
+                  CliDefaults.multiChoiceModify
+                ) match {
                   case Completion.Finished(selectedLabels) =>
                     sourceSkills.filter(s => selectedLabels.exists(_.startsWith(s.name))).asRight
                   case Completion.Fail(CompletionError.Interrupted) =>
@@ -399,7 +403,11 @@ object Sync {
               val selectedTargets = {
                 aiskills.cli.SigintHandler.install()
                 val result = Prompts.sync.use { prompts =>
-                  prompts.multiChoiceNoneSelected("Select target agent(s)", targetLabels) match {
+                  prompts.multiChoiceNoneSelected(
+                    "Select target agent(s)",
+                    targetLabels,
+                    CliDefaults.multiChoiceModify
+                  ) match {
                     case Completion.Finished(selectedLabels) =>
                       targetAgents.filter(a => selectedLabels.contains(a.toString)).asRight
                     case Completion.Fail(CompletionError.Interrupted) =>
