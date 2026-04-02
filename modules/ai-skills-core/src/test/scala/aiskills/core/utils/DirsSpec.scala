@@ -95,7 +95,8 @@ object DirsSpec extends Properties {
   }
 
   private def testSearchDirsOrder: Result = {
-    val dirs = Dirs.getSearchDirs()
+    val dirs   = Dirs.getSearchDirs()
+    val agents = dirs.map { case (_, agent, _) => agent }
     // 1. Project universal
     // 2-7. Project agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini, Windsurf)
     // 8. Global universal
@@ -105,25 +106,25 @@ object DirsSpec extends Properties {
         // Project universal
         dirs(0) ==== (os.pwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project),
         // Project agent-specific (alphabetical)
-        dirs(1)._2 ==== Agent.Claude,
-        dirs(2)._2 ==== Agent.Codex,
-        dirs(3)._2 ==== Agent.Copilot,
-        dirs(4)._2 ==== Agent.Cursor,
-        dirs(5)._2 ==== Agent.Gemini,
-        dirs(6)._2 ==== Agent.Windsurf,
+        agents(1) ==== Agent.Claude,
+        agents(2) ==== Agent.Codex,
+        agents(3) ==== Agent.Copilot,
+        agents(4) ==== Agent.Cursor,
+        agents(5) ==== Agent.Gemini,
+        agents(6) ==== Agent.Windsurf,
         // All project dirs are Project location
-        Result.assert(dirs.take(7).forall(_._3 === SkillLocation.Project)),
+        Result.assert(dirs.take(7).forall { case (_, _, location) => location === SkillLocation.Project }),
         // Global universal
         dirs(7) ==== (os.home / ".agents" / "skills", Agent.Universal, SkillLocation.Global),
         // Global agent-specific (alphabetical)
-        dirs(8)._2 ==== Agent.Claude,
-        dirs(9)._2 ==== Agent.Codex,
-        dirs(10)._2 ==== Agent.Copilot,
-        dirs(11)._2 ==== Agent.Cursor,
-        dirs(12)._2 ==== Agent.Gemini,
-        dirs(13)._2 ==== Agent.Windsurf,
+        agents(8) ==== Agent.Claude,
+        agents(9) ==== Agent.Codex,
+        agents(10) ==== Agent.Copilot,
+        agents(11) ==== Agent.Cursor,
+        agents(12) ==== Agent.Gemini,
+        agents(13) ==== Agent.Windsurf,
         // All global dirs are Global location
-        Result.assert(dirs.drop(7).forall(_._3 === SkillLocation.Global)),
+        Result.assert(dirs.drop(7).forall { case (_, _, location) => location === SkillLocation.Global }),
       )
     )
   }

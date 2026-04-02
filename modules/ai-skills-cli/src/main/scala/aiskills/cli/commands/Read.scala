@@ -35,10 +35,10 @@ object Read {
           source = skillPath / os.up / os.up,
           agent = agent,
           location = location,
-        )).toList
+        ))
 
         if found.isEmpty then missing += name
-        else found.foreach(skill => resolved += ((name, skill)))
+        else found.foreach(skill => resolved += name -> skill)
       }
 
       val missingList = missing.result()
@@ -168,7 +168,7 @@ object Read {
             .filter { (agent, _) =>
               selectedLabels.exists(_.contains(agent.toString))
             }
-            .map(_._1)
+            .map { case (agent, _) => agent }
           selected.asRight
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)

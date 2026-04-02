@@ -85,14 +85,14 @@ object Install {
           val selected = Agent.all.filter(a => selectedLabels.contains(a.toString))
           if selected.isEmpty then {
             println("No agents selected. Installation cancelled.".yellow)
-            Left(0)
-          } else Right(selected)
+            0.asLeft
+          } else selected.asRight
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
-          Left(0)
+          0.asLeft
         case Completion.Fail(CompletionError.Error(msg)) =>
           System.err.println(s"Error: $msg")
-          Left(1)
+          1.asLeft
       }
     }
     result match {
@@ -115,20 +115,20 @@ object Install {
         case Completion.Finished(selectedLabels) =>
           if selectedLabels.isEmpty then {
             println("No location selected. Defaulting to project.".yellow)
-            Right(Set(SkillLocation.Project))
+            Set(SkillLocation.Project).asRight
           } else {
             val locs = selectedLabels.foldLeft(Set.empty[SkillLocation]) { (acc, label) =>
               if label.startsWith("project") then acc + SkillLocation.Project
               else acc + SkillLocation.Global
             }
-            Right(locs)
+            locs.asRight
           }
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
-          Left(0)
+          0.asLeft
         case Completion.Fail(CompletionError.Error(msg)) =>
           System.err.println(s"Error: $msg")
-          Left(1)
+          1.asLeft
       }
     }
     result match {
@@ -492,19 +492,19 @@ object Install {
             case Completion.Finished(selectedLabels) =>
               if selectedLabels.isEmpty then {
                 println("No skills selected. Installation cancelled.".yellow)
-                Right(Nil)
+                List.empty[SkillInfo].asRight
               } else
-                Right(skillInfos.filter { info =>
+                skillInfos.filter { info =>
                   selectedLabels.exists(_.contains(info.skillName))
-                })
+                }.asRight
 
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
-              Left(0)
+              0.asLeft
 
             case Completion.Fail(CompletionError.Error(msg)) =>
               System.err.println(s"Error: $msg")
-              Left(1)
+              1.asLeft
           }
         }
         result match {
@@ -656,12 +656,12 @@ object Install {
           prompts.confirm(s"Skill '$skillName' already exists. Overwrite?".yellow, default = false) match {
             case Completion.Finished(shouldOverwrite) =>
               if shouldOverwrite then os.remove.all(targetPath) else ()
-              Right(shouldOverwrite)
+              shouldOverwrite.asRight
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
-              Left(0)
+              0.asLeft
             case Completion.Fail(CompletionError.Error(_)) =>
-              Right(false)
+              false.asRight
           }
         }
         result match {

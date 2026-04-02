@@ -108,7 +108,7 @@ object ListCmd {
             .filter { (agent, _) =>
               selectedLabels.exists(_.contains(agent.toString))
             }
-            .map(_._1)
+            .map { case (agent, _) => agent }
           selected.asRight
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)

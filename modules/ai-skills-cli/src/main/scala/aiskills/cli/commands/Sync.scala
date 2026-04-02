@@ -277,15 +277,15 @@ object Sync {
           prompts.singleChoice("Select source location", options) match {
             case Completion.Finished(selected) =>
               selected match {
-                case "project" => Right(SkillLocation.Project)
-                case _ => Right(SkillLocation.Global)
+                case "project" => SkillLocation.Project.asRight
+                case _ => SkillLocation.Global.asRight
               }
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
-              Left(0)
+              0.asLeft
             case Completion.Fail(CompletionError.Error(msg)) =>
               System.err.println(s"Error: $msg")
-              Left(1)
+              1.asLeft
           }
         }
         result match {
@@ -310,13 +310,13 @@ object Sync {
           val result = Prompts.sync.use { prompts =>
             prompts.singleChoice("Select source agent", agentLabels) match {
               case Completion.Finished(selectedLabel) =>
-                Right(agents.find(a => selectedLabel.contains(a.toString)))
+                agents.find(a => selectedLabel.contains(a.toString)).asRight
               case Completion.Fail(CompletionError.Interrupted) =>
                 println("\n\nCancelled by user".yellow)
-                Left(0)
+                0.asLeft
               case Completion.Fail(CompletionError.Error(msg)) =>
                 System.err.println(s"Error: $msg")
-                Left(1)
+                1.asLeft
             }
           }
           result match {
@@ -349,13 +349,13 @@ object Sync {
               val result = Prompts.sync.use { prompts =>
                 prompts.multiChoiceAllSelected("Select skills to sync", skillLabels) match {
                   case Completion.Finished(selectedLabels) =>
-                    Right(sourceSkills.filter(s => selectedLabels.exists(_.startsWith(s.name))))
+                    sourceSkills.filter(s => selectedLabels.exists(_.startsWith(s.name))).asRight
                   case Completion.Fail(CompletionError.Interrupted) =>
                     println("\n\nCancelled by user".yellow)
-                    Left(0)
+                    0.asLeft
                   case Completion.Fail(CompletionError.Error(msg)) =>
                     System.err.println(s"Error: $msg")
-                    Left(1)
+                    1.asLeft
                 }
               }
               result match {
@@ -374,16 +374,16 @@ object Sync {
                   prompts.singleChoice("Select target location", options) match {
                     case Completion.Finished(selected) =>
                       selected match {
-                        case "project" => Right(List(SkillLocation.Project))
-                        case "global" => Right(List(SkillLocation.Global))
-                        case _ => Right(List(SkillLocation.Project, SkillLocation.Global))
+                        case "project" => List(SkillLocation.Project).asRight
+                        case "global" => List(SkillLocation.Global).asRight
+                        case _ => List(SkillLocation.Project, SkillLocation.Global).asRight
                       }
                     case Completion.Fail(CompletionError.Interrupted) =>
                       println("\n\nCancelled by user".yellow)
-                      Left(0)
+                      0.asLeft
                     case Completion.Fail(CompletionError.Error(msg)) =>
                       System.err.println(s"Error: $msg")
-                      Left(1)
+                      1.asLeft
                   }
                 }
                 result match {
@@ -401,13 +401,13 @@ object Sync {
                 val result = Prompts.sync.use { prompts =>
                   prompts.multiChoiceNoneSelected("Select target agent(s)", targetLabels) match {
                     case Completion.Finished(selectedLabels) =>
-                      Right(targetAgents.filter(a => selectedLabels.contains(a.toString)))
+                      targetAgents.filter(a => selectedLabels.contains(a.toString)).asRight
                     case Completion.Fail(CompletionError.Interrupted) =>
                       println("\n\nCancelled by user".yellow)
-                      Left(0)
+                      0.asLeft
                     case Completion.Fail(CompletionError.Error(msg)) =>
                       System.err.println(s"Error: $msg")
-                      Left(1)
+                      1.asLeft
                   }
                 }
                 result match {
