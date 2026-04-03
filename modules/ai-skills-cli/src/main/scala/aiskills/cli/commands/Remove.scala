@@ -15,13 +15,10 @@ object Remove {
 
     if allSkills.isEmpty then println("No skills installed.")
     else {
-      val hasProjectSkills = allSkills.exists(_.location === SkillLocation.Project)
-
       val locationsResult: Either[Int, List[SkillLocation]] =
-        if hasProjectSkills then promptForScope()
-        else {
-          println("No project skills found. Removing from global scope.".yellow)
-          List(SkillLocation.Global).asRight
+        InteractiveHelper.reportLocationResolutionThen("Removing", InteractiveHelper.resolveLocations(allSkills)) {
+          case Some(location) => List(location).asRight
+          case None => promptForScope()
         }
 
       locationsResult match {
@@ -38,7 +35,15 @@ object Remove {
               if count > 0 then (agent, count).some else none
             }
 
-            promptForAgents(agentsWithCounts) match {
+            val agentsResult: Either[Int, List[Agent]] =
+              InteractiveHelper.reportAgentResolutionThen(
+                InteractiveHelper.resolveAgents(agentsWithCounts),
+                skillsInScope
+              ) {
+                case Some(agent) => List(agent).asRight
+                case None => promptForAgents(agentsWithCounts, skillsInScope)
+              }
+            agentsResult match {
               case Left(code) => sys.exit(code)
               case Right(selectedAgents) =>
                 if selectedAgents.isEmpty then println("No agents selected.".yellow)
@@ -126,9 +131,12 @@ object Remove {
     }
   }
 
-  private def promptForAgents(agentsWithCounts: List[(Agent, Int)]): Either[Int, List[Agent]] = {
+  private def promptForAgents(
+    agentsWithCounts: List[(Agent, Int)],
+    skillsInScope: List[Skill]
+  ): Either[Int, List[Agent]] = {
     val labels = agentsWithCounts.map { (agent, count) =>
-      s"${agent.toString.padTo(15, ' ')} ($count skill(s))"
+      InteractiveHelper.buildAgentLabel(agent, count, skillsInScope)
     }
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>

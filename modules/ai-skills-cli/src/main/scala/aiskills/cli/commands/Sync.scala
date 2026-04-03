@@ -270,60 +270,73 @@ object Sync {
       println(s"  ${"aiskills install anthropics/skills".cyan}")
     } else {
       // Step 1: Pick source location
-      val sourceLocation = {
-        val options = List("project", "global")
-        aiskills.cli.SigintHandler.install()
-        val result  = Prompts.sync.use { prompts =>
-          prompts.singleChoice("Select source location", options) match {
-            case Completion.Finished(selected) =>
-              selected match {
-                case "project" => SkillLocation.Project.asRight
-                case _ => SkillLocation.Global.asRight
+      val sourceLocation: SkillLocation =
+        InteractiveHelper.reportLocationResolutionThen("Syncing", InteractiveHelper.resolveLocations(allSkills)) {
+          case Some(location) => location
+          case None =>
+            val options = List("project", "global")
+            aiskills.cli.SigintHandler.install()
+            val result  = Prompts.sync.use { prompts =>
+              prompts.singleChoice("Select source location", options) match {
+                case Completion.Finished(selected) =>
+                  selected match {
+                    case "project" => SkillLocation.Project.asRight
+                    case _ => SkillLocation.Global.asRight
+                  }
+                case Completion.Fail(CompletionError.Interrupted) =>
+                  println("\n\nCancelled by user".yellow)
+                  0.asLeft
+                case Completion.Fail(CompletionError.Error(msg)) =>
+                  System.err.println(s"Error: $msg")
+                  1.asLeft
               }
-            case Completion.Fail(CompletionError.Interrupted) =>
-              println("\n\nCancelled by user".yellow)
-              0.asLeft
-            case Completion.Fail(CompletionError.Error(msg)) =>
-              System.err.println(s"Error: $msg")
-              1.asLeft
-          }
+            }
+            result match {
+              case Left(code) => sys.exit(code)
+              case Right(v) => v
+            }
         }
-        result match {
-          case Left(code) => sys.exit(code)
-          case Right(v) => v
-        }
-      }
 
       // Step 2: Pick source agent (filtered by source location)
-      val skillsByAgent = allSkills.filter(_.location === sourceLocation).groupBy(_.agent)
-      val agents        = Agent.all.filter(skillsByAgent.contains)
+      val skillsForSource  = allSkills.filter(_.location === sourceLocation)
+      val skillsByAgent    = skillsForSource.groupBy(_.agent)
+      val agentsWithCounts = Agent.all.flatMap { agent =>
+        skillsByAgent.get(agent).map(skills => (agent, skills.length))
+      }
 
-      if agents.isEmpty then println(s"No skills found in ${sourceLocation.toString.toLowerCase} scope.".yellow)
+      if agentsWithCounts.isEmpty then println(
+        s"No skills found in ${sourceLocation.toString.toLowerCase} scope.".yellow
+      )
       else {
-        val agentLabels = agents.map { a =>
-          val count = skillsByAgent(a).length
-          s"${a.toString.padTo(15, ' ')} ($count skill(s))"
-        }
+        val sourceAgent: Option[Agent] =
+          InteractiveHelper.reportAgentResolutionThen(
+            InteractiveHelper.resolveAgents(agentsWithCounts),
+            skillsForSource
+          ) {
+            case Some(agent) => agent.some
+            case None =>
+              val agentLabels = agentsWithCounts.map { (a, count) =>
+                InteractiveHelper.buildAgentLabel(a, count, skillsForSource)
+              }
+              aiskills.cli.SigintHandler.install()
 
-        val sourceAgent = {
-          aiskills.cli.SigintHandler.install()
-          val result = Prompts.sync.use { prompts =>
-            prompts.singleChoice("Select source agent", agentLabels) match {
-              case Completion.Finished(selectedLabel) =>
-                agents.find(a => selectedLabel.contains(a.toString)).asRight
-              case Completion.Fail(CompletionError.Interrupted) =>
-                println("\n\nCancelled by user".yellow)
-                0.asLeft
-              case Completion.Fail(CompletionError.Error(msg)) =>
-                System.err.println(s"Error: $msg")
-                1.asLeft
-            }
+              val result = Prompts.sync.use { prompts =>
+                prompts.singleChoice("Select source agent", agentLabels) match {
+                  case Completion.Finished(selectedLabel) =>
+                    agentsWithCounts.map(_._1).find(a => selectedLabel.contains(a.toString)).asRight
+                  case Completion.Fail(CompletionError.Interrupted) =>
+                    println("\n\nCancelled by user".yellow)
+                    0.asLeft
+                  case Completion.Fail(CompletionError.Error(msg)) =>
+                    System.err.println(s"Error: $msg")
+                    1.asLeft
+                }
+              }
+              result match {
+                case Left(code) => sys.exit(code)
+                case Right(v) => v
+              }
           }
-          result match {
-            case Left(code) => sys.exit(code)
-            case Right(v) => v
-          }
-        }
 
         sourceAgent match {
           case None =>

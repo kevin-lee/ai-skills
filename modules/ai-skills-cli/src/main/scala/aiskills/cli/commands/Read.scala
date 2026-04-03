@@ -28,7 +28,7 @@ object Read {
       val missing  = List.newBuilder[String]
 
       for name <- names do {
-        val found = (for {
+        val found = for {
           agent    <- agents
           location <- locations
           skillPath = Dirs.getSkillsDir(agent, location) / name / "SKILL.md"
@@ -39,7 +39,7 @@ object Read {
           source = skillPath / os.up / os.up,
           agent = agent,
           location = location,
-        ))
+        )
 
         if found.isEmpty then missing += name
         else found.foreach(skill => resolved += name -> skill)
@@ -90,7 +90,12 @@ object Read {
       println("Install skills:")
       println(s"  ${"aiskills install anthropics/skills".cyan}   ${"# Install from GitHub".dim}")
     } else {
-      promptForScope() match {
+      val locationsResult: Either[Int, List[SkillLocation]] =
+        InteractiveHelper.reportLocationResolutionThen("Reading", InteractiveHelper.resolveLocations(allSkills)) {
+          case Some(location) => List(location).asRight
+          case None => promptForScope()
+        }
+      locationsResult match {
         case Left(code) => sys.exit(code)
         case Right(locations) =>
           val skillsInScope = allSkills.filter(s => locations.contains(s.location))
@@ -106,7 +111,15 @@ object Read {
                 if count > 0 then (agent, count).some else none
               }
 
-            promptForAgents(agentsWithCounts) match {
+            val agentsResult: Either[Int, List[Agent]] =
+              InteractiveHelper.reportAgentResolutionThen(
+                InteractiveHelper.resolveAgents(agentsWithCounts),
+                skillsInScope
+              ) {
+                case Some(agent) => List(agent).asRight
+                case None => promptForAgents(agentsWithCounts, skillsInScope)
+              }
+            agentsResult match {
               case Left(code) => sys.exit(code)
               case Right(selectedAgents) =>
                 if selectedAgents.isEmpty then println("No agents selected.".yellow)
@@ -161,9 +174,12 @@ object Read {
     }
   }
 
-  private def promptForAgents(agentsWithCounts: List[(Agent, Int)]): Either[Int, List[Agent]] = {
+  private def promptForAgents(
+    agentsWithCounts: List[(Agent, Int)],
+    skillsInScope: List[Skill]
+  ): Either[Int, List[Agent]] = {
     val labels = agentsWithCounts.map { (agent, count) =>
-      s"${agent.toString.padTo(15, ' ')} ($count skill(s))"
+      InteractiveHelper.buildAgentLabel(agent, count, skillsInScope)
     }
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
