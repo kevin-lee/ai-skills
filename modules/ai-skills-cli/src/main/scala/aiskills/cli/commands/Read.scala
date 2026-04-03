@@ -1,7 +1,7 @@
 package aiskills.cli.commands
 
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{Dirs, SkillNames, Skills}
+import aiskills.core.utils.{Dirs, SkillNames, Skills, TerminalWidth}
 import aiskills.core.{Agent, ReadOptions, Skill, SkillLocation, SkillLocationInfo}
 import cats.syntax.all.*
 import cue4s.*
@@ -9,7 +9,10 @@ import extras.scala.io.syntax.color.*
 
 object Read {
 
-  private val separator = ">" * 80
+  private def generateSeparator(separatorChar: Char) =
+    "\n" + (separatorChar.toString * TerminalWidth.getTerminalWidth()).green.bold + "\n"
+
+  private val separator = generateSeparator('=')
 
   /** Read skill(s) to stdout — non-interactive mode (with flags). */
   def readSkill(skillNames: List[String], options: ReadOptions): Unit = {
@@ -67,12 +70,13 @@ object Read {
       for ((name, skill), idx) <- resolvedList.zipWithIndex do {
         if idx > 0 then println(separator)
         val content = os.read(skill.path)
-        println(s"Reading: $name")
-        println(s"Base directory: ${skill.baseDir}")
+        println("       Reading:".bold + s" ${name.blue.bold}")
+        println("Base directory:".bold + s" ${skill.baseDir.toString.yellow.bold}")
+
         println()
         println(content)
         println()
-        println(s"Skill read: $name")
+        println("Skill read:".bold + s" ${name.blue.bold}")
       }
     }
   }
@@ -119,12 +123,12 @@ object Read {
                             if idx > 0 then println(separator)
                             val skillPath = skill.path / "SKILL.md"
                             val content   = os.read(skillPath)
-                            println(s"Reading: ${skill.name}")
-                            println(s"Base directory: ${skill.path}")
+                            println("       Reading:".bold + s" ${skill.name.blue.bold}")
+                            println("Base directory:".bold + s" ${skill.path.toString.yellow.bold}")
                             println()
                             println(content)
                             println()
-                            println(s"Skill read: ${skill.name}")
+                            println("Skill read:".bold + s" ${skill.name.blue.bold}")
                           }
                         }
                     }
