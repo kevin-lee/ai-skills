@@ -45,7 +45,12 @@ object ListCmd {
       println(s"  ${"aiskills install owner/skill --agent all".cyan}              ${"# Project, all agents".dim}")
       println(s"  ${"aiskills install owner/skill --global".cyan}                ${"# Global".dim}")
     } else {
-      promptForScope() match {
+      val locationsResult: Either[Int, List[SkillLocation]] =
+        InteractiveHelper.reportLocationResolutionThen("Listing", InteractiveHelper.resolveLocations(allSkills)) {
+          case Some(location) => List(location).asRight
+          case None => promptForScope()
+        }
+      locationsResult match {
         case Left(code) => sys.exit(code)
         case Right(locations) =>
           val skillsInScope = allSkills.filter(s => locations.contains(s.location))
@@ -61,7 +66,15 @@ object ListCmd {
                 if count > 0 then (agent, count).some else none
               }
 
-            promptForAgents(agentsWithCounts) match {
+            val agentsResult: Either[Int, List[Agent]] =
+              InteractiveHelper.reportAgentResolutionThen(
+                InteractiveHelper.resolveAgents(agentsWithCounts),
+                skillsInScope
+              ) {
+                case Some(agent) => List(agent).asRight
+                case None => promptForAgents(agentsWithCounts, skillsInScope)
+              }
+            agentsResult match {
               case Left(code) => sys.exit(code)
               case Right(selectedAgents) =>
                 if selectedAgents.isEmpty then println("No agents selected.".yellow)
@@ -97,9 +110,12 @@ object ListCmd {
     }
   }
 
-  private def promptForAgents(agentsWithCounts: List[(Agent, Int)]): Either[Int, List[Agent]] = {
+  private def promptForAgents(
+    agentsWithCounts: List[(Agent, Int)],
+    skillsInScope: List[Skill]
+  ): Either[Int, List[Agent]] = {
     val labels = agentsWithCounts.map { (agent, count) =>
-      s"${agent.toString.padTo(15, ' ')} ($count skill(s))"
+      InteractiveHelper.buildAgentLabel(agent, count, skillsInScope)
     }
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
