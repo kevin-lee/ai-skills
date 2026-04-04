@@ -30,6 +30,8 @@ lazy val core = module("core")
   .settings(
     libraryDependencies ++= Seq(
       libs.osLib.value,
+      libs.cats.value,
+      libs.kittens.value,
       libs.scalaXml.value,
       libs.circeCore.value,
       libs.circeParser.value,
@@ -77,6 +79,10 @@ lazy val props = new {
 
   val OsLibVersion = "0.11.8"
 
+  val CatsVersion = "2.13.0"
+
+  val KittensVersion = "3.5.0"
+
   val CirceVersion = "0.14.15"
 
   val CirceYamlVersion = "0.16.1"
@@ -98,6 +104,10 @@ lazy val props = new {
 
 lazy val libs = new {
   lazy val osLib = Def.setting("com.lihaoyi" %%% "os-lib" % props.OsLibVersion)
+
+  lazy val cats = Def.setting("org.typelevel" %%% "cats-core" % props.CatsVersion)
+
+  lazy val kittens = Def.setting("org.typelevel" %%% "kittens" % props.KittensVersion)
 
   lazy val circeCore = Def.setting("io.circe" %%% "circe-core" % props.CirceVersion)
 
