@@ -15,12 +15,11 @@ object AgentNames {
     else {
       val (invalid, valid) = names.partitionMap { name =>
         Agent.fromString(name) match {
-          case Some(agent) => agent.asRight
-          case None => name.asLeft
+          case Right(agent) => agent.asRight
+          case Left(_) => name.asLeft
         }
       }
-      if invalid.nonEmpty then invalid.head.asLeft
-      else valid.asRight
+      invalid.headOption.toLeft(valid)
     }
   }
 }

@@ -1,13 +1,14 @@
 package aiskills.core
 
-import cats.Eq
+import cats.*
+import cats.derived.*
 import cats.syntax.all.*
-import io.circe.generic.semiauto.*
-import io.circe.{Decoder, Encoder}
+import io.circe.{Codec, Decoder, Encoder}
 
-given Eq[os.Path] = Eq.fromUniversalEquals
+given Eq[os.Path]   = Eq.fromUniversalEquals
+given Show[os.Path] = Show.fromToString
 
-enum Agent(val projectDirName: String, val globalDirName: String) {
+enum Agent(val projectDirName: String, val globalDirName: String) derives Eq, Show {
   case Universal extends Agent(".agents", ".agents")
   case Claude extends Agent(".claude", ".claude")
   case Cursor extends Agent(".cursor", ".cursor")
@@ -16,16 +17,16 @@ enum Agent(val projectDirName: String, val globalDirName: String) {
   case Windsurf extends Agent(".windsurf", ".codeium/windsurf")
   case Copilot extends Agent(".github", ".copilot")
 }
-
 object Agent {
-  given Eq[Agent] = Eq.fromUniversalEquals
 
   val all: List[Agent] = Agent.values.toList
 
   val allNonUniversal: List[Agent] = all.filterNot(_ === Agent.Universal)
 
-  def fromString(s: String): Option[Agent] =
-    all.find(_.toString.equalsIgnoreCase(s))
+  def fromString(s: String): Either[String, Agent] =
+    all
+      .find(_.toString.equalsIgnoreCase(s))
+      .toRight(s"Invalid Agent: $s. Valid agents: ${all.map(_.toString.toLowerCase).mkString(", ")}")
 
   def needsAgentsMd(agent: Agent): Boolean =
     agent match {
@@ -35,28 +36,26 @@ object Agent {
 
   given Encoder[Agent] = Encoder.encodeString.contramap(_.toString.toLowerCase)
 
-  given Decoder[Agent] = Decoder.decodeString.emap { s =>
-    fromString(s).toRight(s"Invalid Agent: $s. Valid agents: ${all.map(_.toString.toLowerCase).mkString(", ")}")
-  }
+  given Decoder[Agent] = Decoder.decodeString.emap(fromString)
 }
 
-enum SkillLocation {
+enum SkillLocation derives Eq, Show {
   case Project, Global
 }
-
 object SkillLocation {
-  given Eq[SkillLocation] = Eq.fromUniversalEquals
+
+  def fromString(s: String): Either[String, SkillLocation] = s match {
+    case "project" => SkillLocation.Project.asRight
+    case "global" => SkillLocation.Global.asRight
+    case other => s"Invalid SkillLocation: $other".asLeft
+  }
 
   given Encoder[SkillLocation] = Encoder.encodeString.contramap {
     case SkillLocation.Project => "project"
     case SkillLocation.Global => "global"
   }
 
-  given Decoder[SkillLocation] = Decoder.decodeString.emap {
-    case "project" => SkillLocation.Project.asRight
-    case "global" => SkillLocation.Global.asRight
-    case other => s"Invalid SkillLocation: $other".asLeft
-  }
+  given Decoder[SkillLocation] = Decoder.decodeString.emap(fromString)
 }
 
 final case class Skill(
@@ -65,7 +64,8 @@ final case class Skill(
   location: SkillLocation,
   agent: Agent,
   path: os.Path,
-)
+) derives Eq,
+      Show
 
 final case class SkillLocationInfo(
   path: os.Path,
@@ -73,36 +73,39 @@ final case class SkillLocationInfo(
   source: os.Path,
   agent: Agent,
   location: SkillLocation,
-)
+) derives Eq,
+      Show
 
 final case class InstallOptions(
   locations: Set[SkillLocation],
   agent: Option[List[Agent]],
   yes: Boolean,
-)
+) derives Eq,
+      Show
 
 final case class ReadOptions(
   locations: Set[SkillLocation],
   agent: Option[List[Agent]],
-)
+) derives Eq,
+      Show
 
 final case class ListOptions(
   locations: Set[SkillLocation],
   agent: Option[List[Agent]],
-)
+) derives Eq,
+      Show
 
 final case class SkillMetadata(
   name: String,
   description: String,
   context: Option[String],
-)
+) derives Eq,
+      Show
 
-enum SkillSourceType {
+enum SkillSourceType derives Eq, Show {
   case Git, GitHub, Local
 }
-
 object SkillSourceType {
-  given Eq[SkillSourceType] = Eq.fromUniversalEquals
 
   given Encoder[SkillSourceType] = Encoder.encodeString.contramap {
     case SkillSourceType.Git => "git"
@@ -125,35 +128,35 @@ final case class SkillSourceMetadata(
   subpath: Option[String],
   localPath: Option[String],
   installedAt: String,
-)
+) derives Eq,
+      Show,
+      Codec.AsObject
 
-object SkillSourceMetadata {
-  given Encoder[SkillSourceMetadata] = deriveEncoder[SkillSourceMetadata]
-  given Decoder[SkillSourceMetadata] = deriveDecoder[SkillSourceMetadata]
+enum AiSkillsError derives Eq, Show {
+  case SkillNotFound(name: String) extends AiSkillsError
+  case GitCloneError(url: String, detail: String) extends AiSkillsError
+  case MetadataParseError(path: os.Path, detail: String) extends AiSkillsError
+  case InvalidFrontmatter(path: os.Path) extends AiSkillsError
+  case InvalidSource(source: String) extends AiSkillsError
+  case PathTraversalError(target: os.Path, parent: os.Path) extends AiSkillsError
+  case InvalidOutputPath(path: String) extends AiSkillsError
+  case IoError(detail: String) extends AiSkillsError
+  case InvalidAgent(name: String) extends AiSkillsError
 }
-
-sealed trait AiSkillsError
-
 object AiSkillsError {
-  final case class SkillNotFound(name: String) extends AiSkillsError
-  final case class GitCloneError(url: String, detail: String) extends AiSkillsError
-  final case class MetadataParseError(path: os.Path, detail: String) extends AiSkillsError
-  final case class InvalidFrontmatter(path: os.Path) extends AiSkillsError
-  final case class InvalidSource(source: String) extends AiSkillsError
-  final case class PathTraversalError(target: os.Path, parent: os.Path) extends AiSkillsError
-  final case class InvalidOutputPath(path: String) extends AiSkillsError
-  final case class IoError(detail: String) extends AiSkillsError
-  final case class InvalidAgent(name: String) extends AiSkillsError
 
-  def skillNotFound(name: String): AiSkillsError                          = SkillNotFound(name)
-  def gitCloneError(url: String, detail: String): AiSkillsError           = GitCloneError(url, detail)
-  def metadataParseError(path: os.Path, detail: String): AiSkillsError    = MetadataParseError(path, detail)
-  def invalidFrontmatter(path: os.Path): AiSkillsError                    = InvalidFrontmatter(path)
-  def invalidSource(source: String): AiSkillsError                        = InvalidSource(source)
-  def pathTraversalError(target: os.Path, parent: os.Path): AiSkillsError = PathTraversalError(target, parent)
-  def invalidOutputPath(path: String): AiSkillsError                      = InvalidOutputPath(path)
-  def ioError(detail: String): AiSkillsError                              = IoError(detail)
-  def invalidAgent(name: String): AiSkillsError                           = InvalidAgent(name)
+  def skillNotFound(name: String): AiSkillsError                       = AiSkillsError.SkillNotFound(name)
+  def gitCloneError(url: String, detail: String): AiSkillsError        = AiSkillsError.GitCloneError(url, detail)
+  def metadataParseError(path: os.Path, detail: String): AiSkillsError = AiSkillsError.MetadataParseError(path, detail)
+  def invalidFrontmatter(path: os.Path): AiSkillsError                 = AiSkillsError.InvalidFrontmatter(path)
+  def invalidSource(source: String): AiSkillsError                     = AiSkillsError.InvalidSource(source)
+  def pathTraversalError(
+    target: os.Path,
+    parent: os.Path
+  ): AiSkillsError                                   = AiSkillsError.PathTraversalError(target, parent)
+  def invalidOutputPath(path: String): AiSkillsError = AiSkillsError.InvalidOutputPath(path)
+  def ioError(detail: String): AiSkillsError         = AiSkillsError.IoError(detail)
+  def invalidAgent(name: String): AiSkillsError      = AiSkillsError.InvalidAgent(name)
 
   extension (error: AiSkillsError) {
     def message: String = error match {
@@ -175,7 +178,8 @@ object AiSkillsError {
 final case class RemoveOptions(
   locations: Set[SkillLocation],
   agent: Option[List[Agent]],
-)
+) derives Eq,
+      Show
 
 final case class SyncOptions(
   skillNames: List[String],
@@ -183,11 +187,13 @@ final case class SyncOptions(
   to: Option[List[Agent]],
   targetLocations: Set[SkillLocation],
   yes: Boolean,
-)
+) derives Eq,
+      Show
 
 final case class InstallSourceInfo(
   source: String,
   sourceType: SkillSourceType,
   repoUrl: Option[String],
   localRoot: Option[os.Path],
-)
+) derives Eq,
+      Show

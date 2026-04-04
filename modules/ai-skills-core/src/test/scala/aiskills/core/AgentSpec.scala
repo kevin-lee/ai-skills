@@ -26,33 +26,46 @@ object AgentSpec extends Properties {
   private def testFromStringLowercase: Result =
     Result.all(
       List(
-        Agent.fromString("universal") ==== Agent.Universal.some,
-        Agent.fromString("claude") ==== Agent.Claude.some,
-        Agent.fromString("cursor") ==== Agent.Cursor.some,
-        Agent.fromString("codex") ==== Agent.Codex.some,
-        Agent.fromString("gemini") ==== Agent.Gemini.some,
-        Agent.fromString("windsurf") ==== Agent.Windsurf.some,
-        Agent.fromString("copilot") ==== Agent.Copilot.some,
+        Agent.fromString("universal") ==== Agent.Universal.asRight,
+        Agent.fromString("claude") ==== Agent.Claude.asRight,
+        Agent.fromString("cursor") ==== Agent.Cursor.asRight,
+        Agent.fromString("codex") ==== Agent.Codex.asRight,
+        Agent.fromString("gemini") ==== Agent.Gemini.asRight,
+        Agent.fromString("windsurf") ==== Agent.Windsurf.asRight,
+        Agent.fromString("copilot") ==== Agent.Copilot.asRight,
       )
     )
 
   private def testFromStringMixedCase: Result =
     Result.all(
       List(
-        Agent.fromString("Claude") ==== Agent.Claude.some,
-        Agent.fromString("CURSOR") ==== Agent.Cursor.some,
-        Agent.fromString("Universal") ==== Agent.Universal.some,
+        Agent.fromString("Claude") ==== Agent.Claude.asRight,
+        Agent.fromString("CURSOR") ==== Agent.Cursor.asRight,
+        Agent.fromString("Universal") ==== Agent.Universal.asRight,
       )
     )
 
-  private def testFromStringInvalid: Result =
+  private def testFromStringInvalid: Result = {
+    val input1 = "invalid"
+    val input2 = ""
+    val input3 = "vscode"
     Result.all(
       List(
-        Agent.fromString("invalid") ==== none[Agent],
-        Agent.fromString("") ==== none[Agent],
-        Agent.fromString("vscode") ==== none[Agent],
+        Agent.fromString(
+          input1
+        ) ==== s"Invalid Agent: $input1. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+          .asLeft[Agent],
+        Agent.fromString(
+          input2
+        ) ==== s"Invalid Agent: $input2. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+          .asLeft[Agent],
+        Agent.fromString(
+          input3
+        ) ==== s"Invalid Agent: $input3. Valid agents: ${Agent.all.map(_.toString.toLowerCase).mkString(", ")}"
+          .asLeft[Agent],
       )
     )
+  }
 
   private def testUniversalProjectDir: Result =
     Agent.Universal.projectDirName ==== ".agents"
