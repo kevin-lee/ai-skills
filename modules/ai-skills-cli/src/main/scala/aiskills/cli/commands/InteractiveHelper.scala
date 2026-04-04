@@ -29,7 +29,7 @@ object InteractiveHelper {
     * e.g. List("(project, Claude): .claude/skills", "(global, Claude): ~/.claude/skills")
     */
   def agentLocationLabels(agent: Agent, locations: List[SkillLocation]): List[String] =
-    locations.sortBy(_.ordinal).map { loc =>
+    locations.sorted.map { loc =>
       s"(${loc.toString.toLowerCase}, ${agent.toString})".blue + s": ${Dirs.displaySkillsDir(agent, loc)}".dim
     }
 
@@ -37,7 +37,7 @@ object InteractiveHelper {
     * e.g. List("(project, Claude): .claude/skills", "(global, Claude): ~/.claude/skills")
     */
   def agentLocationLabelsPlain(agent: Agent, locations: List[SkillLocation]): List[String] =
-    locations.sortBy(_.ordinal).map { loc =>
+    locations.sorted.map { loc =>
       s"(${loc.toString.toLowerCase}, ${agent.toString}): ${Dirs.displaySkillsDir(agent, loc)}"
     }
 
@@ -45,7 +45,7 @@ object InteractiveHelper {
     * e.g. "Claude          (4 skill(s))  (project, Claude): .claude/skills, (global, Claude): ~/.claude/skills"
     */
   def buildAgentLabel(agent: Agent, count: Int, skillsInScope: List[Skill]): String = {
-    val agentLocations = skillsInScope.filter(_.agent === agent).map(_.location).distinct.sortBy(_.ordinal)
+    val agentLocations = skillsInScope.filter(_.agent === agent).map(_.location).distinct.sorted
     val pathParts      = agentLocationLabelsPlain(agent, agentLocations)
     s"${agent.toString.padTo(15, ' ')} ($count skill(s))  ${pathParts.mkString(", ")}"
   }
@@ -77,7 +77,7 @@ object InteractiveHelper {
   )(f: Option[Agent] => A): A = {
     resolved.foreach { agent =>
       println(s"Only ${agent.toString} has skills. Auto-selecting ${agent.toString}.".yellow)
-      val agentLocations = skillsInScope.filter(_.agent === agent).map(_.location).distinct.sortBy(_.ordinal)
+      val agentLocations = skillsInScope.filter(_.agent === agent).map(_.location).distinct.sorted
       agentLocationLabels(agent, agentLocations).foreach(println)
     }
     f(resolved)

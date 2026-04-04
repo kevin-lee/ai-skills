@@ -31,8 +31,11 @@ object InteractiveHelperSpec extends Properties {
     // agentLocationLabelsPlain
     example("agentLocationLabelsPlain: single project location", testPlainLabelsSingleProject),
     example("agentLocationLabelsPlain: single global location", testPlainLabelsSingleGlobal),
-    example("agentLocationLabelsPlain: both locations sorted project-first", testPlainLabelsBothSorted),
-    example("agentLocationLabelsPlain: both locations sorted even if input is reversed", testPlainLabelsBothReversed),
+    example("agentLocationLabelsPlain: both locations sorted global-first", testPlainLabelsBothSorted),
+    example(
+      "agentLocationLabelsPlain: both locations sorted even if input is reversed (global-first)",
+      testPlainLabelsBothReversed
+    ),
     // buildAgentLabel
     example("buildAgentLabel: single location", testBuildAgentLabelSingleLocation),
     example("buildAgentLabel: multiple locations", testBuildAgentLabelMultipleLocations),
@@ -118,8 +121,8 @@ object InteractiveHelperSpec extends Properties {
     Result.all(
       List(
         labels.length ==== 2,
-        labels(0) ==== "(project, Claude): .claude/skills",
-        labels(1) ==== "(global, Claude): ~/.claude/skills",
+        labels(0) ==== "(global, Claude): ~/.claude/skills",
+        labels(1) ==== "(project, Claude): .claude/skills",
       )
     )
   }
@@ -132,8 +135,8 @@ object InteractiveHelperSpec extends Properties {
     Result.all(
       List(
         labels.length ==== 2,
-        labels(0) ==== "(project, Claude): .claude/skills",
-        labels(1) ==== "(global, Claude): ~/.claude/skills",
+        labels(0) ==== "(global, Claude): ~/.claude/skills",
+        labels(1) ==== "(project, Claude): .claude/skills",
       )
     )
   }
@@ -156,7 +159,7 @@ object InteractiveHelperSpec extends Properties {
       skill("s3", SkillLocation.Project, Agent.Claude),
     )
     val label  = InteractiveHelper.buildAgentLabel(Agent.Claude, 3, skills)
-    label ==== "Claude          (3 skill(s))  (project, Claude): .claude/skills, (global, Claude): ~/.claude/skills"
+    label ==== "Claude          (3 skill(s))  (global, Claude): ~/.claude/skills, (project, Claude): .claude/skills"
   }
 
   private def testBuildAgentLabelPartialLocations: Result = {

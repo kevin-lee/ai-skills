@@ -142,8 +142,8 @@ object Install {
     val projectPaths   = agents.map(_.projectDirName).distinct.mkString(", ")
     val globalPaths    = agents.map(a => s"~/${a.globalDirName}").distinct.mkString(", ")
     val locationLabels = List(
-      s"project ($projectPaths)",
       s"global  ($globalPaths)",
+      s"project ($projectPaths)",
     )
 
     aiskills.cli.SigintHandler.install()
