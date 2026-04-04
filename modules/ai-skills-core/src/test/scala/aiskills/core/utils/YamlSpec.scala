@@ -13,6 +13,14 @@ object YamlSpec extends Properties {
     example("extractYamlField: should not be vulnerable to ReDoS patterns", testReDoS),
     example("extractYamlField: should handle special characters in values", testSpecialChars),
     example("extractYamlField: should handle colons in values", testColonsInValues),
+    example("extractYamlField: should handle folded scalar (>)", testFoldedScalar),
+    example("extractYamlField: should handle literal scalar (|)", testLiteralScalar),
+    example("extractYamlField: should handle folded scalar with strip (>-)", testFoldedScalarWithStrip),
+    example("extractYamlField: should stop block scalar at next field", testBlockScalarStopsAtNextField),
+    example(
+      "extractYamlField: should stop block scalar at frontmatter end (---)",
+      testBlockScalarStopsAtFrontmatterEnd
+    ),
     example("hasValidFrontmatter: should return true for valid frontmatter", testValidFrontmatter),
     example("hasValidFrontmatter: should return false for missing frontmatter", testMissingFrontmatter),
     example("hasValidFrontmatter: should return false for empty content", testEmptyContent),
@@ -98,6 +106,78 @@ object YamlSpec extends Properties {
 
     val desc = Yaml.extractYamlField(content, "description")
     Result.assert(desc.contains("URL:"))
+  }
+
+  private def testFoldedScalar: Result = {
+    val content =
+      """---
+        |name: 2020-hindsight-scala
+        |description: >
+        |  Refactor Scala code and apply good practices from 2020 Hindsight Scala.
+        |  Use this skill whenever writing new Scala code, reviewing Scala code,
+        |  or refactoring existing Scala code.
+        |---
+        |
+        |Content""".stripMargin
+
+    Yaml.extractYamlField(content, "description") ====
+      "Refactor Scala code and apply good practices from 2020 Hindsight Scala. Use this skill whenever writing new Scala code, reviewing Scala code, or refactoring existing Scala code."
+  }
+
+  private def testLiteralScalar: Result = {
+    val content =
+      """---
+        |name: my-skill
+        |description: |
+        |  Line one.
+        |  Line two.
+        |  Line three.
+        |---""".stripMargin
+
+    Yaml.extractYamlField(content, "description") ==== "Line one.\nLine two.\nLine three."
+  }
+
+  private def testFoldedScalarWithStrip: Result = {
+    val content =
+      """---
+        |name: my-skill
+        |description: >-
+        |  Folded with strip indicator.
+        |  Second line here.
+        |---""".stripMargin
+
+    Yaml.extractYamlField(content, "description") ==== "Folded with strip indicator. Second line here."
+  }
+
+  private def testBlockScalarStopsAtNextField: Result = {
+    val content =
+      """---
+        |name: my-skill
+        |description: >
+        |  First line of description.
+        |  Second line of description.
+        |context: some-context
+        |---""".stripMargin
+
+    Result.all(
+      List(
+        Yaml.extractYamlField(content, "description") ==== "First line of description. Second line of description.",
+        Yaml.extractYamlField(content, "context") ==== "some-context",
+      )
+    )
+  }
+
+  private def testBlockScalarStopsAtFrontmatterEnd: Result = {
+    val content =
+      """---
+        |name: my-skill
+        |description: >
+        |  Description before frontmatter end.
+        |---
+        |
+        |Body content here.""".stripMargin
+
+    Yaml.extractYamlField(content, "description") ==== "Description before frontmatter end."
   }
 
   private def testValidFrontmatter: Result = {
