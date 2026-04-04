@@ -154,7 +154,7 @@ object Read {
   }
 
   private def promptForScope(): Either[Int, List[SkillLocation]] = {
-    val options = List("project", "global", "both")
+    val options = List("global", "project", "both")
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
       prompts.singleChoice("Select scope", options) match {
@@ -162,7 +162,7 @@ object Read {
           selected match {
             case "project" => List(SkillLocation.Project).asRight
             case "global" => List(SkillLocation.Global).asRight
-            case _ => List(SkillLocation.Project, SkillLocation.Global).asRight
+            case _ => List(SkillLocation.Global, SkillLocation.Project).asRight
           }
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
@@ -202,9 +202,9 @@ object Read {
   }
 
   private def promptForSkills(skills: List[Skill]): Either[Int, List[Skill]] = {
-    val sorted = skills.sortBy { s =>
-      (s.agent.ordinal, if s.location === SkillLocation.Project then 0 else 1, s.name)
-    }
+    given Ordering[SkillLocation] = SkillLocation.ordering.reverse
+
+    val sorted = skills.sortBy(s => (s.agent.ordinal, s.location, s.name))
 
     val labels = sorted.map { skill =>
       val pathLabel     = Dirs.displaySkillsDir(skill.agent, skill.location)

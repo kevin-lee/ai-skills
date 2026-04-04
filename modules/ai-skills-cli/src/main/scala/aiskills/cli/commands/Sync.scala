@@ -274,7 +274,7 @@ object Sync {
         InteractiveHelper.reportLocationResolutionThen("Syncing", InteractiveHelper.resolveLocations(allSkills)) {
           case Some(location) => location
           case None =>
-            val options = List("project", "global")
+            val options = List("global", "project")
             aiskills.cli.SigintHandler.install()
             val result  = Prompts.sync.use { prompts =>
               prompts.singleChoice("Select source location", options) match {
@@ -388,7 +388,7 @@ object Sync {
             else {
               // Step 4: Pick target location
               val targetLocations = {
-                val options = List("project", "global", "both")
+                val options = List("global", "project", "both")
                 aiskills.cli.SigintHandler.install()
                 val result  = Prompts.sync.use { prompts =>
                   prompts.singleChoice("Select target location", options) match {
@@ -396,7 +396,7 @@ object Sync {
                       selected match {
                         case "project" => List(SkillLocation.Project).asRight
                         case "global" => List(SkillLocation.Global).asRight
-                        case _ => List(SkillLocation.Project, SkillLocation.Global).asRight
+                        case _ => List(SkillLocation.Global, SkillLocation.Project).asRight
                       }
                     case Completion.Fail(CompletionError.Interrupted) =>
                       println("\n\nCancelled by user".yellow)

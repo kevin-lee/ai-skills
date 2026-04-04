@@ -50,6 +50,11 @@ object SkillLocation {
     case other => s"Invalid SkillLocation: $other".asLeft
   }
 
+  given ordering: Ordering[SkillLocation] = Ordering.by {
+    case SkillLocation.Project => 1
+    case SkillLocation.Global => 0
+  }
+
   given Encoder[SkillLocation] = Encoder.encodeString.contramap {
     case SkillLocation.Project => "project"
     case SkillLocation.Global => "global"
