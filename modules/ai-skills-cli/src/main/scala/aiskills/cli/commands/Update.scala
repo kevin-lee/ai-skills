@@ -104,8 +104,7 @@ object Update {
                       )
                       val _       = spinner.start()
                       Try {
-                        os.proc("git", "clone", "--depth", "1", "--quiet", repoUrl, (tempDir / "repo").toString)
-                          .call(stderr = os.Pipe)
+                        Install.cloneWithFallback(repoUrl, (tempDir / "repo").toString)
                       } match {
                         case Failure(ex) =>
                           val _   = spinner.fail(Some(s"Clone failed: ${skill.name}"))
@@ -115,7 +114,7 @@ object Update {
                           cloneFailures += skill.name
                           (upd, skp + 1)
 
-                        case Success(_) =>
+                        case Success(actualUrl) =>
                           val repoDir   = tempDir / "repo"
                           val subpath   = meta.subpath.filter(s => s.nonEmpty && s =!= ".")
                           val sourceDir = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
@@ -129,12 +128,13 @@ object Update {
                             (upd, skp + 1)
                           } else {
                             updateSkillFromDir(skill.path, sourceDir)
-                            SkillMetadata.writeSkillMetadata(
-                              skill.path,
-                              meta.copy(installedAt = aiskills.core.utils.isoNow()),
-                            )
-                            val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
-                            val _         = spinner.succeed(
+                            val updatedMeta =
+                              if actualUrl =!= repoUrl
+                              then meta.copy(repoUrl = actualUrl.some, installedAt = aiskills.core.utils.isoNow())
+                              else meta.copy(installedAt = aiskills.core.utils.isoNow())
+                            SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
+                            val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)
+                            val _           = spinner.succeed(
                               Some(
                                 s"Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel"
                               )
