@@ -70,7 +70,7 @@ lazy val props = new {
   val RepoName       = gitHubRepo.fold("ai-skills")(_.nameToString)
   val ProjectName    = RepoName
 
-  val ScalaVersion = "3.8.2"
+  val ScalaVersion = "3.8.3"
 
   val Org     = "io.kevinlee"
   val OrgName = "Kevin's Code"
