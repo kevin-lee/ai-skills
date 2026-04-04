@@ -44,6 +44,16 @@ object InstallSpec extends Properties {
     // GitHub shorthand parsing
     example("GitHub shorthand: owner/repo", testGithubOwnerRepo),
     example("GitHub shorthand: owner/repo/path", testGithubOwnerRepoPath),
+    // isGitHubHttpsUrl
+    example("isGitHubHttpsUrl: detects GitHub HTTPS URL", testIsGitHubHttpsUrl),
+    example("isGitHubHttpsUrl: detects GitHub HTTPS URL with .git", testIsGitHubHttpsUrlDotGit),
+    example("isGitHubHttpsUrl: rejects non-GitHub HTTPS", testIsGitHubHttpsUrlNotGitLab),
+    example("isGitHubHttpsUrl: rejects SSH URL", testIsGitHubHttpsUrlNotSsh),
+    example("isGitHubHttpsUrl: rejects HTTP URL", testIsGitHubHttpsUrlNotHttp),
+    // gitHubHttpsToSsh
+    example("gitHubHttpsToSsh: converts plain URL", testGitHubHttpsToSshPlain),
+    example("gitHubHttpsToSsh: converts URL with .git", testGitHubHttpsToSshDotGit),
+    example("gitHubHttpsToSsh: converts URL with trailing slash", testGitHubHttpsToSshTrailingSlash),
   )
 
   // isLocalPath tests
@@ -247,4 +257,30 @@ object InstallSpec extends Properties {
       )
     )
   }
+
+  // isGitHubHttpsUrl tests
+  private def testIsGitHubHttpsUrl: Result =
+    Result.assert(Install.isGitHubHttpsUrl("https://github.com/owner/repo"))
+
+  private def testIsGitHubHttpsUrlDotGit: Result =
+    Result.assert(Install.isGitHubHttpsUrl("https://github.com/owner/repo.git"))
+
+  private def testIsGitHubHttpsUrlNotGitLab: Result =
+    Result.assert(!Install.isGitHubHttpsUrl("https://gitlab.com/owner/repo"))
+
+  private def testIsGitHubHttpsUrlNotSsh: Result =
+    Result.assert(!Install.isGitHubHttpsUrl("git@github.com:owner/repo.git"))
+
+  private def testIsGitHubHttpsUrlNotHttp: Result =
+    Result.assert(!Install.isGitHubHttpsUrl("http://github.com/owner/repo"))
+
+  // gitHubHttpsToSsh tests
+  private def testGitHubHttpsToSshPlain: Result =
+    Install.gitHubHttpsToSsh("https://github.com/owner/repo") ==== "git@github.com:owner/repo.git"
+
+  private def testGitHubHttpsToSshDotGit: Result =
+    Install.gitHubHttpsToSsh("https://github.com/owner/repo.git") ==== "git@github.com:owner/repo.git"
+
+  private def testGitHubHttpsToSshTrailingSlash: Result =
+    Install.gitHubHttpsToSsh("https://github.com/owner/repo/") ==== "git@github.com:owner/repo.git"
 }

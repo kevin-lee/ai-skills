@@ -29,6 +29,44 @@ object Install {
       source.startsWith("https://") ||
       source.endsWith(".git")
 
+  /** Check if the URL is a GitHub HTTPS URL. */
+  def isGitHubHttpsUrl(url: String): Boolean =
+    url.startsWith("https://github.com/")
+
+  /** Convert a GitHub HTTPS URL to the equivalent SSH URL. */
+  def gitHubHttpsToSsh(url: String): String = {
+    val path = url.stripPrefix("https://github.com/").stripSuffix("/").stripSuffix(".git")
+    s"git@github.com:$path.git"
+  }
+
+  /** Clone a repo, falling back to SSH if the HTTPS GitHub URL fails.
+    *
+    * The HTTPS attempt uses `-c credential.helper=` to disable credential
+    * helpers and `GIT_TERMINAL_PROMPT=0` so the clone fails fast instead
+    * of prompting for a password.
+    *
+    * @return the URL that actually succeeded (may differ from `repoUrl` when fallback was used)
+    */
+  def cloneWithFallback(repoUrl: String, targetPath: String): String = {
+    val noPromptEnv = Map("GIT_TERMINAL_PROMPT" -> "0")
+    Try {
+      os.proc("git", "-c", "credential.helper=", "clone", "--depth", "1", "--quiet", repoUrl, targetPath)
+        .call(stderr = os.Pipe, env = noPromptEnv)
+    } match {
+      case Success(_) => repoUrl
+      case Failure(_) if isGitHubHttpsUrl(repoUrl) =>
+        val sshUrl = gitHubHttpsToSsh(repoUrl)
+        Try {
+          os.proc("git", "clone", "--depth", "1", "--quiet", sshUrl, targetPath)
+            .call(stderr = os.Pipe)
+        } match {
+          case Success(_) => sshUrl
+          case Failure(sshEx) => throw sshEx // scalafix:ok DisableSyntax.throw
+        }
+      case Failure(ex) => throw ex // scalafix:ok DisableSyntax.throw
+    }
+  }
+
   /** Extract the repo name from the git URL. */
   def getRepoName(repoUrl: String): Option[String] = {
     val cleaned = repoUrl.stripSuffix(".git")
@@ -254,15 +292,9 @@ object Install {
     } else {
       val (repoUrl, skillSubpath) = parseGitSource(source)
 
-      val tempDir    = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
+      val tempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
       os.makeDir.all(tempDir)
       aiskills.cli.TempDirCleanup.register(tempDir)
-      val sourceInfo = InstallSourceInfo(
-        source = source,
-        sourceType = SkillSourceType.Git,
-        repoUrl = repoUrl.some,
-        localRoot = none[os.Path],
-      )
 
       val spinner = Spinner.createDefaultSideEffect(
         SpinnerConfig
@@ -272,23 +304,32 @@ object Install {
           .withIndent(2),
       )
       val _       = spinner.start()
-      Try {
-        os.proc("git", "clone", "--depth", "1", "--quiet", repoUrl, (tempDir / "repo").toString)
-          .call(stderr = os.Pipe)
-      } match {
-        case Failure(ex) =>
-          val _   = spinner.fail(Some("Clone failed"))
-          val msg = ex.getMessage
-          if msg.nonEmpty then println(msg.dim) else ()
-          println("\nTip: For private repos, ensure git SSH keys or credentials are configured".yellow)
-          aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
-          aiskills.cli.TempDirCleanup.unregister()
-          throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
-        case Success(_) =>
-          val _ = spinner.succeed(Some("Repository cloned"))
-      }
 
-      ResolvedSource.Git(tempDir / "repo", repoUrl, skillSubpath, sourceInfo)
+      val actualUrl =
+        Try {
+          cloneWithFallback(repoUrl, (tempDir / "repo").toString)
+        } match {
+          case Failure(ex) =>
+            val _   = spinner.fail(Some("Clone failed"))
+            val msg = ex.getMessage
+            if msg.nonEmpty then println(msg.dim) else ()
+            println("\nTip: For private repos, ensure git SSH keys or credentials are configured".yellow)
+            aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
+            aiskills.cli.TempDirCleanup.unregister()
+            throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
+          case Success(url) =>
+            val _ = spinner.succeed(Some("Repository cloned"))
+            url
+        }
+
+      val sourceInfo = InstallSourceInfo(
+        source = source,
+        sourceType = SkillSourceType.Git,
+        repoUrl = actualUrl.some,
+        localRoot = none[os.Path],
+      )
+
+      ResolvedSource.Git(tempDir / "repo", actualUrl, skillSubpath, sourceInfo)
     }
   }
 
