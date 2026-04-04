@@ -323,7 +323,10 @@ object Sync {
               val result = Prompts.sync.use { prompts =>
                 prompts.singleChoice("Select source agent", agentLabels) match {
                   case Completion.Finished(selectedLabel) =>
-                    agentsWithCounts.map(_._1).find(a => selectedLabel.contains(a.toString)).asRight
+                    agentsWithCounts
+                      .map { case (agent, _) => agent }
+                      .find(a => selectedLabel.contains(a.toString))
+                      .asRight
                   case Completion.Fail(CompletionError.Interrupted) =>
                     println("\n\nCancelled by user".yellow)
                     0.asLeft
