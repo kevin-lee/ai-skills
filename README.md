@@ -6,15 +6,15 @@ Built with Scala 3 and Scala Native — compiles to a standalone binary with no 
 
 ## Supported Agents
 
-| Agent                   | Project Dir         | Global Dir                    |
-|-------------------------|---------------------|-------------------------------|
-| **Universal** (default) | `.agents/skills/`   | `~/.agents/skills/`           |
-| **Claude**              | `.claude/skills/`   | `~/.claude/skills/`           |
-| **Cursor**              | `.cursor/skills/`   | `~/.cursor/skills/`           |
-| **Codex**               | `.codex/skills/`    | `~/.codex/skills/`            |
-| **Gemini**              | `.gemini/skills/`   | `~/.gemini/skills/`           |
-| **Windsurf**            | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` |
-| **Copilot**             | `.github/skills/`   | `~/.copilot/skills/`          |
+| Agent         | Project Dir         | Global Dir                    |
+|---------------|---------------------|-------------------------------|
+| **Universal** | `.agents/skills/`   | `~/.agents/skills/`           |
+| **Claude**    | `.claude/skills/`   | `~/.claude/skills/`           |
+| **Cursor**    | `.cursor/skills/`   | `~/.cursor/skills/`           |
+| **Codex**     | `.codex/skills/`    | `~/.codex/skills/`            |
+| **Gemini**    | `.gemini/skills/`   | `~/.gemini/skills/`           |
+| **Windsurf**  | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` |
+| **Copilot**   | `.github/skills/`   | `~/.copilot/skills/`          |
 
 ## Install
 
@@ -84,13 +84,13 @@ sbt cli/nativeLink
 This produces a standalone native binary at:
 
 ```
-modules/ai-skills-cli/target/scala-3.8.2/aiskills
+modules/ai-skills-cli/target/scala-3.8.3/aiskills
 ```
 
 Copy or symlink it to a location on your `PATH`:
 
 ```bash
-cp modules/ai-skills-cli/target/scala-3.8.2/aiskills /usr/local/bin/aiskills
+cp modules/ai-skills-cli/target/scala-3.8.3/aiskills /usr/local/bin/aiskills
 ```
 
 ## Usage
