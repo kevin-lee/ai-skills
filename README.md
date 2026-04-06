@@ -1,6 +1,16 @@
 # ai-skills
 
-A native CLI tool for managing skills for AI coding agents. It implements the SKILL.md format and provides commands to install, list, read, update, sync, and remove skills across project-local and global directories for multiple AI agents.
+
+![](https://ai-skills.kevinly.dev/img/ai-skills-all.svg)
+
+[![[Scala Native] Build All](https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml/badge.svg)](https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml)
+[![Release](https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml/badge.svg)](https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml)
+![GitHub Release](https://img.shields.io/github/v/release/kevin-lee/ai-skills)
+
+
+[![Hits](https://hits.sh/github.com/kevin-lee/ai-skills.svg)](https://ai-skills.kevinly.dev)
+
+`ai-skills` is a native CLI tool for managing reusable prompt skills for AI coding agents. It can install and manage AI agent skills (`SKILL.md`) and provides commands to `install`, `list`, `read`, `update`, `sync`, and `remove` skills across project-local and global directories for multiple AI agents.
 
 Built with Scala 3 and Scala Native — compiles to a standalone binary with no JVM or Node.js runtime required.
 
