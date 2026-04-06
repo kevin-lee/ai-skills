@@ -1,14 +1,18 @@
 # ai-skills
 
 
-![](https://ai-skills.kevinly.dev/img/ai-skills-all.svg)
+<p align="center">
 
-[![[Scala Native] Build All](https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml/badge.svg)](https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml)
-[![Release](https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml/badge.svg)](https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml)
-![GitHub Release](https://img.shields.io/github/v/release/kevin-lee/ai-skills)
+  <img src="https://ai-skills.kevinly.dev/img/ai-skills-all.svg"/>
 
+</p>
 
-[![Hits](https://hits.sh/github.com/kevin-lee/ai-skills.svg)](https://ai-skills.kevinly.dev)
+<p align="center">
+  <a href="https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml" target="_blank"><img alt="[Scala Native] Build All" src="https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml/badge.svg" /></a>
+  <a href="https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml" target="_blank"><img alt="Release" src="https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml/badge.svg" /></a>
+  <a href="https://ai-skills.kevinly.dev" target="_blank"><img alt="Hits" src="https://hits.sh/github.com/kevin-lee/ai-skills.svg"/></a>
+  <img alt="GitHub Release" src="https://img.shields.io/github/v/release/kevin-lee/ai-skills">
+</p>
 
 `ai-skills` is a native CLI tool for managing reusable prompt skills for AI coding agents. It can install and manage AI agent skills (`SKILL.md`) and provides commands to `install`, `list`, `read`, `update`, `sync`, and `remove` skills across project-local and global directories for multiple AI agents.
 
