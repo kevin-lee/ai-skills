@@ -14,6 +14,8 @@
 
 Built with Scala 3 and Scala Native — compiles to a standalone binary with no JVM or Node.js runtime required.
 
+**Please visit the [ai-skills website](https://ai-skills.kevinly.dev) for more information.**
+
 ## Supported Agents
 
 | Agent         | Project Dir         | Global Dir                    |
