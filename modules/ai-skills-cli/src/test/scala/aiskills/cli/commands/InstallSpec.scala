@@ -1,5 +1,7 @@
 package aiskills.cli.commands
 
+import aiskills.core.{SkillSourceMetadata, SkillSourceType}
+import aiskills.core.utils.SkillMetadata
 import cats.syntax.all.*
 import hedgehog.*
 import hedgehog.runner.*
@@ -54,6 +56,19 @@ object InstallSpec extends Properties {
     example("gitHubHttpsToSsh: converts plain URL", testGitHubHttpsToSshPlain),
     example("gitHubHttpsToSsh: converts URL with .git", testGitHubHttpsToSshDotGit),
     example("gitHubHttpsToSsh: converts URL with trailing slash", testGitHubHttpsToSshTrailingSlash),
+    // skillLabel
+    example("skillLabel: formats label with name, subpath, and size", testSkillLabelBasic),
+    example("skillLabel: formats label with long subpath", testSkillLabelLongSubpath),
+    // skillNameWithSubpath
+    example("skillNameWithSubpath: formats name with subpath", testSkillNameWithSubpath),
+    example("skillNameWithSubpath: distinguishes duplicate names by subpath", testSkillNameWithSubpathDuplicates),
+    // existingSubpathLabel
+    example("existingSubpathLabel: returns subpath from metadata", testExistingSubpathLabelWithMetadata),
+    example("existingSubpathLabel: returns empty when no metadata", testExistingSubpathLabelNoMetadata),
+    // selectByLabel
+    example("selectByLabel: selects matching items by label", testSelectByLabelMatching),
+    example("selectByLabel: returns empty when no labels selected", testSelectByLabelEmpty),
+    example("selectByLabel: handles duplicate skill names with different subpaths", testSelectByLabelDuplicateNames),
   )
 
   // isLocalPath tests
@@ -283,4 +298,101 @@ object InstallSpec extends Properties {
 
   private def testGitHubHttpsToSshTrailingSlash: Result =
     Install.gitHubHttpsToSsh("https://github.com/owner/repo/") ==== "git@github.com:owner/repo.git"
+
+  // skillLabel tests
+  private def testSkillLabelBasic: Result = {
+    val label = Install.skillLabel("my-skill", "tools/my-skill", 2048L)
+    Result.all(
+      List(
+        Result.assert(label.contains("my-skill")),
+        Result.assert(label.contains("(tools/my-skill)")),
+        Result.assert(label.contains("2.0KB")),
+      )
+    )
+  }
+
+  private def testSkillLabelLongSubpath: Result = {
+    val label = Install.skillLabel("my-skill", "very/deep/nested/path/to/my-skill", 500L)
+    Result.all(
+      List(
+        Result.assert(label.contains("my-skill")),
+        Result.assert(label.contains("(very/deep/nested/path/to/my-skill)")),
+        Result.assert(label.contains("500B")),
+      )
+    )
+  }
+
+  // skillNameWithSubpath tests
+  private def testSkillNameWithSubpath: Result = {
+    val result = Install.skillNameWithSubpath("my-skill", "tools/my-skill")
+    Result.all(
+      List(
+        result ==== "my-skill (tools/my-skill)",
+        Result.assert(result.contains("my-skill")),
+        Result.assert(result.contains("tools/my-skill")),
+      )
+    )
+  }
+
+  private def testSkillNameWithSubpathDuplicates: Result = {
+    val display1 = Install.skillNameWithSubpath("my-skill", "path/a/my-skill")
+    val display2 = Install.skillNameWithSubpath("my-skill", "path/b/my-skill")
+    Result.all(
+      List(
+        Result.assert(display1 =!= display2),
+        display1 ==== "my-skill (path/a/my-skill)",
+        display2 ==== "my-skill (path/b/my-skill)",
+      )
+    )
+  }
+
+  // existingSubpathLabel tests
+  private def testExistingSubpathLabelWithMetadata: Result = {
+    val tmpDir = os.temp.dir()
+    try {
+      val metadata = SkillSourceMetadata(
+        source = "owner/repo",
+        sourceType = SkillSourceType.Git,
+        repoUrl = "https://github.com/owner/repo".some,
+        subpath = "path/to/my-skill".some,
+        localPath = none[String],
+        installedAt = "2026-01-01T00:00:00Z",
+      )
+      SkillMetadata.writeSkillMetadata(tmpDir, metadata)
+      Install.existingSubpathLabel(tmpDir) ==== "path/to/my-skill"
+    } finally os.remove.all(tmpDir)
+  }
+
+  private def testExistingSubpathLabelNoMetadata: Result = {
+    val tmpDir = os.temp.dir()
+    try Install.existingSubpathLabel(tmpDir) ==== ""
+    finally os.remove.all(tmpDir)
+  }
+
+  // selectByLabel tests
+  private def testSelectByLabelMatching: Result = {
+    val labels = List("label-a", "label-b", "label-c")
+    val items  = List("item-a", "item-b", "item-c")
+    Install.selectByLabel(labels, items, List("label-a", "label-c")) ==== List("item-a", "item-c")
+  }
+
+  private def testSelectByLabelEmpty: Result = {
+    val labels = List("label-a", "label-b")
+    val items  = List("item-a", "item-b")
+    Install.selectByLabel(labels, items, List.empty[String]) ==== List.empty[String]
+  }
+
+  private def testSelectByLabelDuplicateNames: Result = {
+    val label1 = Install.skillLabel("my-skill", "path/a/my-skill", 1024L)
+    val label2 = Install.skillLabel("my-skill", "path/b/my-skill", 2048L)
+    val labels = List(label1, label2)
+    val items  = List("skill-a", "skill-b")
+    Result.all(
+      List(
+        Install.selectByLabel(labels, items, List(label1)) ==== List("skill-a"),
+        Install.selectByLabel(labels, items, List(label2)) ==== List("skill-b"),
+        Install.selectByLabel(labels, items, List(label1, label2)) ==== List("skill-a", "skill-b"),
+      )
+    )
+  }
 }
