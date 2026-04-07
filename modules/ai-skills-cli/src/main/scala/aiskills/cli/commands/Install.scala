@@ -101,6 +101,26 @@ object Install {
     else if bytes < 1024 * 1024 then f"${bytes / 1024.0}%.1fKB"
     else f"${bytes / (1024.0 * 1024.0)}%.1fMB"
 
+  /** Format a skill label with name, subpath, and size for display in selection lists. */
+  def skillLabel(skillName: String, subpath: String, size: Long): String =
+    s"${skillName.padTo(25, ' ')} ($subpath)".padTo(60, ' ') + s" ${formatSize(size)}"
+
+  /** Format a skill name with its subpath for display in messages. */
+  def skillNameWithSubpath(skillName: String, subpath: String): String =
+    s"$skillName ($subpath)"
+
+  /** Read the subpath of an already-installed skill from its metadata. */
+  def existingSubpathLabel(targetPath: os.Path): String =
+    SkillMetadata.readSkillMetadata(targetPath).flatMap(_.subpath).getOrElse("")
+
+  /** Select items from a list by matching their labels against selected labels. */
+  def selectByLabel[A](labels: List[String], items: List[A], selectedLabels: List[String]): List[A] =
+    selectedLabels
+      .flatMap { label =>
+        labels.zipWithIndex.find { case (l, _) => l === label }.map { case (_, idx) => idx }
+      }
+      .map(items(_))
+
   /** Resolve agents and location from options, prompting interactively when not specified. */
   private def resolveAgentsAndLocation(options: InstallOptions): (List[Agent], Set[SkillLocation]) = {
     options.agent match {
@@ -450,6 +470,7 @@ object Install {
     final case class SkillInfo(
       skillDir: os.Path,
       skillName: String,
+      subpath: String,
       description: String,
       targetPath: os.Path,
       size: Long,
@@ -470,6 +491,7 @@ object Install {
             SkillInfo(
               skillDir = repoDir,
               skillName = skillName,
+              subpath = "",
               description = Yaml.extractYamlField(content, "description"),
               targetPath = targetDir / skillName,
               size = getDirectorySize(repoDir),
@@ -503,10 +525,11 @@ object Install {
             if !Yaml.hasValidFrontmatter(content) then none[SkillInfo]
             else {
               val skillName   = skillDir.last
+              val subpath     = skillDir.relativeTo(repoDir).toString
               val description = Yaml.extractYamlField(content, "description")
               val targetPath  = targetDir / skillName
               val size        = getDirectorySize(skillDir)
-              SkillInfo(skillDir, skillName, description, targetPath, size).some
+              SkillInfo(skillDir, skillName, subpath, description, targetPath, size).some
             }
           }
 
@@ -523,7 +546,7 @@ object Install {
     val skillsToInstall: List[SkillInfo] =
       if !options.yes && skillInfos.length > 1 then {
         val labels = skillInfos.map { info =>
-          s"${info.skillName.padTo(25, ' ')} ${formatSize(info.size)}"
+          skillLabel(info.skillName, info.subpath, info.size)
         }
 
         aiskills.cli.SigintHandler.install()
@@ -534,9 +557,7 @@ object Install {
                 println("No skills selected. Installation cancelled.".yellow)
                 List.empty[SkillInfo].asRight
               } else
-                skillInfos.filter { info =>
-                  selectedLabels.exists(_.contains(info.skillName))
-                }.asRight
+                selectByLabel(labels, skillInfos, selectedLabels).asRight
 
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
@@ -562,7 +583,10 @@ object Install {
           case ((count, bulk), info) =>
             def doInstall(): Int = {
               if os.exists(info.targetPath) then {
-                println(s"Overwriting: ${info.skillName} (all existing files and folders will be removed)".dim)
+                val existingSubpath = existingSubpathLabel(info.targetPath)
+                println(
+                  s"Replacing: ${skillNameWithSubpath(info.skillName, existingSubpath)} -> ${skillNameWithSubpath(info.skillName, info.subpath)}".dim
+                )
                 os.remove.all(info.targetPath)
               } else ()
               os.makeDir.all(targetDir)
@@ -575,7 +599,7 @@ object Install {
                   info.targetPath,
                   buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
                 )
-                println(s"\u2705 Installed: ${info.skillName}".green)
+                println(s"\u2705 Installed: ${skillNameWithSubpath(info.skillName, info.subpath)}".green)
                 count + 1
               }
             }
@@ -602,7 +626,7 @@ object Install {
                   info.targetPath,
                   buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
                 )
-                println(s"\u2705 Installed: ${info.skillName}".green)
+                println(s"\u2705 Installed: ${skillNameWithSubpath(info.skillName, info.subpath)}".green)
                 (count + 1, bulk)
               }
             } else if options.yes then (doInstall(), bulk)
@@ -612,13 +636,16 @@ object Install {
                   (doInstall(), bulk)
 
                 case BulkDecision.SkipAll =>
-                  println(s"Skipped: ${info.skillName}".yellow)
+                  println(s"Skipped: ${skillNameWithSubpath(info.skillName, info.subpath)}".yellow)
                   (count, bulk)
 
                 case BulkDecision.Undecided =>
+                  val existingSubpath = existingSubpathLabel(info.targetPath)
+                  println(s"   Existing: ${skillNameWithSubpath(info.skillName, existingSubpath)}".dim)
+                  println(s"   New:      ${skillNameWithSubpath(info.skillName, info.subpath)}".dim)
                   OverwritePrompt.askOverwriteChoice(
                     info.skillName,
-                    s"Skill '${info.skillName}' already exists. What would you like to do?",
+                    s"Skill '${info.skillName}' already exists. Replace with '${skillNameWithSubpath(info.skillName, info.subpath)}'?",
                   ) match {
                     case Left(code) =>
                       throw SkillInstallException(code) // scalafix:ok DisableSyntax.throw
@@ -627,14 +654,14 @@ object Install {
                       (doInstall(), BulkDecision.Undecided)
 
                     case Right(OverwriteChoice.No) =>
-                      println(s"Skipped: ${info.skillName}".yellow)
+                      println(s"Skipped: ${skillNameWithSubpath(info.skillName, info.subpath)}".yellow)
                       (count, BulkDecision.Undecided)
 
                     case Right(OverwriteChoice.YesToAll) =>
                       (doInstall(), BulkDecision.OverwriteAll)
 
                     case Right(OverwriteChoice.NoToAll) =>
-                      println(s"Skipped: ${info.skillName}".yellow)
+                      println(s"Skipped: ${skillNameWithSubpath(info.skillName, info.subpath)}".yellow)
                       (count, BulkDecision.SkipAll)
                   }
               }
