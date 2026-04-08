@@ -2,7 +2,7 @@ package aiskills.cli.commands
 
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{AgentsMd, Dirs, Skills, TerminalWidth}
+import aiskills.core.utils.{AgentsMd, Dirs, SkillMetadata, Skills, TerminalWidth, Yaml}
 import aiskills.core.{Agent, Skill, SkillLocation, SyncOptions}
 import cats.syntax.all.*
 import cue4s.*
@@ -150,6 +150,14 @@ object Sync {
                             println(s"Skipped: ${s.name}".yellow)
                             (count, BulkDecision.Undecided)
 
+                          case Right(OverwriteChoice.Rename) =>
+                            OverwritePrompt.askNewSkillName(s.name, targetDir) match {
+                              case Left(code) => sys.exit(code)
+                              case Right(newName) =>
+                                syncSkillWithRename(s.path, targetDir, newName, to, targetLocation)
+                                (count + 1, BulkDecision.Undecided)
+                            }
+
                           case Right(OverwriteChoice.YesToAll) =>
                             (doSync(), BulkDecision.OverwriteAll)
 
@@ -241,6 +249,14 @@ object Sync {
                           println(s"Skipped: ${s.name}".yellow)
                           (count, BulkDecision.Undecided)
 
+                        case Right(OverwriteChoice.Rename) =>
+                          OverwritePrompt.askNewSkillName(s.name, targetDir) match {
+                            case Left(code) => sys.exit(code)
+                            case Right(newName) =>
+                              syncSkillWithRename(s.path, targetDir, newName, to, targetLocation)
+                              (count + 1, BulkDecision.Undecided)
+                          }
+
                         case Right(OverwriteChoice.YesToAll) =>
                           (doSync(), BulkDecision.OverwriteAll)
 
@@ -260,6 +276,32 @@ object Sync {
         AgentsMd.updateAgentsMdForAgent(to, targetLocation)
       }
     }
+  }
+
+  /** Sync a skill under a new name (rename flow). */
+  private def syncSkillWithRename(
+    sourcePath: os.Path,
+    targetDir: os.Path,
+    newName: String,
+    to: Agent,
+    targetLocation: SkillLocation,
+  ): Unit = {
+    val newTargetPath = targetDir / newName
+    os.makeDir.all(targetDir)
+    os.copy(sourcePath, newTargetPath, replaceExisting = true)
+    val skillMdPath   = newTargetPath / "SKILL.md"
+    if os.exists(skillMdPath) then {
+      val content = os.read(skillMdPath)
+      val updated = Yaml.replaceYamlField(content, "name", newName)
+      os.write.over(skillMdPath, updated)
+    } else ()
+    // Update .aiskills.json name field if metadata exists
+    SkillMetadata.readSkillMetadata(newTargetPath).foreach { meta =>
+      SkillMetadata.writeSkillMetadata(newTargetPath, meta.copy(name = newName.some))
+    }
+    println(
+      s"\u2705 Synced: ${sourcePath.last} as $newName -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
+    )
   }
 
   private def interactiveSync(yes: Boolean): Unit = {

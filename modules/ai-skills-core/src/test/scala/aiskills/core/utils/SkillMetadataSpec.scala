@@ -9,6 +9,8 @@ object SkillMetadataSpec extends Properties {
 
   override def tests: List[Test] = List(
     example("writes and reads metadata", testWriteAndRead),
+    example("writes and reads metadata with name", testWriteAndReadWithName),
+    example("reads legacy metadata without name as None", testLegacyMetadataWithoutName),
     example("returns None when metadata is missing", testMissing),
     example("returns None for invalid JSON", testInvalidJson),
   )
@@ -42,6 +44,61 @@ object SkillMetadataSpec extends Properties {
               r.repoUrl ==== payload.repoUrl,
               r.subpath ==== payload.subpath,
               r.installedAt ==== payload.installedAt,
+            )
+          )
+        case None => Result.failure.log("Expected Some but got None")
+      }
+    }
+
+  private def testWriteAndReadWithName: Result =
+    withTempDir { tempDir =>
+      val payload = SkillSourceMetadata(
+        name = "renamed-skill".some,
+        source = "owner/repo",
+        sourceType = SkillSourceType.Git,
+        repoUrl = "https://github.com/owner/repo".some,
+        subpath = "skills/demo".some,
+        localPath = none[String],
+        installedAt = "2026-01-01T00:00:00.000Z",
+      )
+
+      SkillMetadata.writeSkillMetadata(tempDir, payload)
+      val read = SkillMetadata.readSkillMetadata(tempDir)
+
+      read match {
+        case Some(r) =>
+          Result.all(
+            List(
+              r.name ==== "renamed-skill".some,
+              r.source ==== payload.source,
+              r.sourceType ==== payload.sourceType,
+            )
+          )
+        case None => Result.failure.log("Expected Some but got None")
+      }
+    }
+
+  private def testLegacyMetadataWithoutName: Result =
+    withTempDir { tempDir =>
+      // Write JSON without "name" key, simulating legacy metadata
+      val legacyJson =
+        """{
+          |  "source" : "owner/repo",
+          |  "sourceType" : "git",
+          |  "repoUrl" : "https://github.com/owner/repo",
+          |  "subpath" : "skills/demo",
+          |  "localPath" : null,
+          |  "installedAt" : "2026-01-01T00:00:00.000Z"
+          |}""".stripMargin
+      os.write(tempDir / SkillMetadata.SkillMetadataFile, legacyJson)
+      val read       = SkillMetadata.readSkillMetadata(tempDir)
+
+      read match {
+        case Some(r) =>
+          Result.all(
+            List(
+              r.name ==== none[String],
+              r.source ==== "owner/repo",
             )
           )
         case None => Result.failure.log("Expected Some but got None")

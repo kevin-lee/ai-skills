@@ -43,6 +43,12 @@ object Yaml {
     }
   }
 
+  /** Replace the value of a simple (non-block-scalar) YAML field. Returns the updated content.
+    * If the field is not found, returns the content unchanged.
+    */
+  def replaceYamlField(content: String, field: String, newValue: String): String =
+    fieldPattern(field).replaceFirstIn(content, s"$field: $newValue")
+
   /** Check if content starts with YAML frontmatter delimiter. */
   def hasValidFrontmatter(content: String): Boolean =
     content.trim.startsWith("---")
