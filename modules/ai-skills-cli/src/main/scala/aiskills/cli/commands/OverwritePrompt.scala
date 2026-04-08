@@ -28,7 +28,7 @@ object OverwritePrompt {
     val options = List(
       "Yes          — Overwrite this skill",
       "No           — Skip this skill",
-      "Rename       — Keep both (install under a new name)",
+      s"${"Rename".yellow}       — Keep both (install under a new name)",
       "Yes to all   — Overwrite all remaining conflicts",
       "No to all    — Skip all remaining conflicts",
     )
@@ -41,7 +41,7 @@ object OverwritePrompt {
         case Completion.Finished(selected) =>
           if selected.startsWith("Yes to all") then OverwriteChoice.YesToAll.asRight[Int]
           else if selected.startsWith("No to all") then OverwriteChoice.NoToAll.asRight[Int]
-          else if selected.startsWith("Rename") then OverwriteChoice.Rename.asRight[Int]
+          else if selected.contains("Rename") then OverwriteChoice.Rename.asRight[Int]
           else if selected.startsWith("Yes") then OverwriteChoice.Yes.asRight[Int]
           else OverwriteChoice.No.asRight[Int]
         case Completion.Fail(CompletionError.Interrupted) =>
