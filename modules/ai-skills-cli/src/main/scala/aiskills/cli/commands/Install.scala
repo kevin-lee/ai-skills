@@ -759,7 +759,7 @@ object Install {
         val options = List(
           "Overwrite    — Replace the existing skill",
           "Skip         — Keep the existing skill",
-          "Rename       — Keep both (install under a new name)",
+          s"${"Rename".yellow}       — Keep both (install under a new name)",
         )
         aiskills.cli.SigintHandler.install()
         val result  = Prompts.sync.use { prompts =>
@@ -771,7 +771,7 @@ object Install {
               if selected.startsWith("Overwrite") then {
                 os.remove.all(targetPath)
                 ConflictResolution.Overwrite.asRight
-              } else if selected.startsWith("Rename") then {
+              } else if selected.contains("Rename") then {
                 OverwritePrompt.askNewSkillName(skillName, targetDir) match {
                   case Left(code) => code.asLeft
                   case Right(newName) => ConflictResolution.Rename(newName).asRight
