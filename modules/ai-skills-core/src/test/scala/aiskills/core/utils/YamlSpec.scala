@@ -21,6 +21,9 @@ object YamlSpec extends Properties {
       "extractYamlField: should stop block scalar at frontmatter end (---)",
       testBlockScalarStopsAtFrontmatterEnd
     ),
+    example("replaceYamlField: replaces name field", testReplaceNameField),
+    example("replaceYamlField: preserves other fields", testReplacePreservesOtherFields),
+    example("replaceYamlField: returns content unchanged for missing field", testReplaceMissingField),
     example("hasValidFrontmatter: should return true for valid frontmatter", testValidFrontmatter),
     example("hasValidFrontmatter: should return false for missing frontmatter", testMissingFrontmatter),
     example("hasValidFrontmatter: should return false for empty content", testEmptyContent),
@@ -178,6 +181,43 @@ object YamlSpec extends Properties {
         |Body content here.""".stripMargin
 
     Yaml.extractYamlField(content, "description") ==== "Description before frontmatter end."
+  }
+
+  private def testReplaceNameField: Result = {
+    val content =
+      """---
+        |name: old-name
+        |description: A test skill
+        |---""".stripMargin
+
+    val result = Yaml.replaceYamlField(content, "name", "new-name")
+    Yaml.extractYamlField(result, "name") ==== "new-name"
+  }
+
+  private def testReplacePreservesOtherFields: Result = {
+    val content =
+      """---
+        |name: old-name
+        |description: A test skill
+        |---""".stripMargin
+
+    val result = Yaml.replaceYamlField(content, "name", "new-name")
+    Result.all(
+      List(
+        Yaml.extractYamlField(result, "name") ==== "new-name",
+        Yaml.extractYamlField(result, "description") ==== "A test skill",
+      )
+    )
+  }
+
+  private def testReplaceMissingField: Result = {
+    val content =
+      """---
+        |name: my-skill
+        |---""".stripMargin
+
+    val result = Yaml.replaceYamlField(content, "missing", "value")
+    result ==== content
   }
 
   private def testValidFrontmatter: Result = {

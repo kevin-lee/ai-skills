@@ -1,7 +1,7 @@
 package aiskills.cli.commands
 
 import aiskills.core.SkillSourceType
-import aiskills.core.utils.{Dirs, SkillMetadata, SkillNames, Skills}
+import aiskills.core.utils.{Dirs, SkillMetadata, SkillNames, Skills, Yaml}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
@@ -85,11 +85,10 @@ object Update {
                 missingLocalSkillFile += skill.name
               case Some(lp) =>
                 updateSkillFromDir(skill.path, lp)
-                SkillMetadata.writeSkillMetadata(
-                  skill.path,
-                  meta.copy(installedAt = aiskills.core.utils.isoNow()),
-                )
-                val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
+                val updatedMeta = meta.copy(installedAt = aiskills.core.utils.isoNow())
+                SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
+                reapplyRename(skill.path, updatedMeta)
+                val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)
                 println(
                   s"\u2705 Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
                 )
@@ -161,6 +160,7 @@ object Update {
                             then meta.copy(repoUrl = actualUrl.some, installedAt = aiskills.core.utils.isoNow())
                             else meta.copy(installedAt = aiskills.core.utils.isoNow())
                           SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
+                          reapplyRename(skill.path, updatedMeta)
                           val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)
                           println(
                             s"\u2705 Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
@@ -244,6 +244,17 @@ object Update {
 
   private def isPathInside(target: os.Path, parent: os.Path): Boolean =
     target.startsWith(parent)
+
+  /** Re-apply the renamed name to SKILL.md after an update replaces it with the original source. */
+  private def reapplyRename(skillPath: os.Path, meta: aiskills.core.SkillSourceMetadata): Unit =
+    meta.name.foreach { renamedName =>
+      val skillMdPath = skillPath / "SKILL.md"
+      if os.exists(skillMdPath) then {
+        val content = os.read(skillMdPath)
+        val updated = Yaml.replaceYamlField(content, "name", renamedName)
+        os.write.over(skillMdPath, updated)
+      } else ()
+    }
 
   /** Normalize a Git repository URL to a canonical form for grouping.
     * Strips protocol, trailing slashes, and .git suffix. Lowercases.

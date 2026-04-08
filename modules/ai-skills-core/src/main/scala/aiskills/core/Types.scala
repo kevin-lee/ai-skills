@@ -127,6 +127,7 @@ object SkillSourceType {
 }
 
 final case class SkillSourceMetadata(
+  name: Option[String] = none, // For backward compat: existing .aiskills.json without name
   source: String,
   sourceType: SkillSourceType,
   repoUrl: Option[String],

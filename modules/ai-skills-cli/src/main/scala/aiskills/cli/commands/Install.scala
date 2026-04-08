@@ -400,19 +400,27 @@ object Install {
       val skillName  = skillDir.last
       val targetPath = targetDir / skillName
 
-      if !warnIfConflict(skillName, targetPath, isProject, options.yes) then println(s"Skipped: $skillName".yellow)
-      else {
-        os.makeDir.all(targetDir)
-        if !isPathInside(targetPath, targetDir) then {
-          System.err.println("Security error: Installation path outside target directory".red)
-          throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
-        } else {
-          os.copy(skillDir, targetPath, replaceExisting = true)
-          SkillMetadata.writeSkillMetadata(targetPath, buildLocalMetadata(sourceInfo, skillDir))
+      resolveConflict(skillName, targetPath, targetDir, isProject, options.yes) match {
+        case ConflictResolution.Skip =>
+          println(s"Skipped: $skillName".yellow)
 
-          println(s"\u2705 Installed: $skillName".green)
-          println(s"   Location: $targetPath")
-        }
+        case ConflictResolution.Overwrite | ConflictResolution.NoConflict =>
+          os.makeDir.all(targetDir)
+          if !isPathInside(targetPath, targetDir) then {
+            System.err.println("Security error: Installation path outside target directory".red)
+            throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
+          } else {
+            os.copy(skillDir, targetPath, replaceExisting = true)
+            SkillMetadata.writeSkillMetadata(targetPath, buildLocalMetadata(sourceInfo, skillDir))
+
+            println(s"\u2705 Installed: $skillName".green)
+            println(s"   Location: $targetPath")
+          }
+
+        case ConflictResolution.Rename(newName) =>
+          installSkillWithRename(skillDir, targetDir, newName, buildLocalMetadata(sourceInfo, skillDir))
+          println(s"\u2705 Installed: $skillName as $newName".green)
+          println(s"   Location: ${targetDir / newName}")
       }
     }
   }
@@ -440,19 +448,27 @@ object Install {
         val skillName  = skillSubpath.split("/").last
         val targetPath = targetDir / skillName
 
-        if !warnIfConflict(skillName, targetPath, isProject, options.yes) then println(s"Skipped: $skillName".yellow)
-        else {
-          os.makeDir.all(targetDir)
-          if !isPathInside(targetPath, targetDir) then {
-            System.err.println("Security error: Installation path outside target directory".red)
-            throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
-          } else {
-            os.copy(skillDir, targetPath, replaceExisting = true)
-            SkillMetadata.writeSkillMetadata(targetPath, buildGitMetadata(sourceInfo, skillSubpath))
+        resolveConflict(skillName, targetPath, targetDir, isProject, options.yes) match {
+          case ConflictResolution.Skip =>
+            println(s"Skipped: $skillName".yellow)
 
-            println(s"\u2705 Installed: $skillName".green)
-            println(s"   Location: $targetPath")
-          }
+          case ConflictResolution.Overwrite | ConflictResolution.NoConflict =>
+            os.makeDir.all(targetDir)
+            if !isPathInside(targetPath, targetDir) then {
+              System.err.println("Security error: Installation path outside target directory".red)
+              throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
+            } else {
+              os.copy(skillDir, targetPath, replaceExisting = true)
+              SkillMetadata.writeSkillMetadata(targetPath, buildGitMetadata(sourceInfo, skillSubpath))
+
+              println(s"\u2705 Installed: $skillName".green)
+              println(s"   Location: $targetPath")
+            }
+
+          case ConflictResolution.Rename(newName) =>
+            installSkillWithRename(skillDir, targetDir, newName, buildGitMetadata(sourceInfo, skillSubpath))
+            println(s"\u2705 Installed: $skillName as $newName".green)
+            println(s"   Location: ${targetDir / newName}")
         }
       }
     }
@@ -657,6 +673,23 @@ object Install {
                       println(s"Skipped: ${skillNameWithSubpath(info.skillName, info.subpath)}".yellow)
                       (count, BulkDecision.Undecided)
 
+                    case Right(OverwriteChoice.Rename) =>
+                      OverwritePrompt.askNewSkillName(info.skillName, targetDir) match {
+                        case Left(code) =>
+                          throw SkillInstallException(code) // scalafix:ok DisableSyntax.throw
+                        case Right(newName) =>
+                          installSkillWithRename(
+                            info.skillDir,
+                            targetDir,
+                            newName,
+                            buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
+                          )
+                          println(
+                            s"\u2705 Installed: ${skillNameWithSubpath(info.skillName, info.subpath)} as $newName".green
+                          )
+                          (count + 1, BulkDecision.Undecided)
+                      }
+
                     case Right(OverwriteChoice.YesToAll) =>
                       (doInstall(), BulkDecision.OverwriteAll)
 
@@ -703,32 +736,52 @@ object Install {
       installedAt = aiskills.core.utils.isoNow(),
     )
 
-  private def warnIfConflict(
+  private enum ConflictResolution {
+    case Overwrite
+    case Skip
+    case Rename(newName: String)
+    case NoConflict
+  }
+
+  private def resolveConflict(
     skillName: String,
     targetPath: os.Path,
+    targetDir: os.Path,
     isProject: Boolean,
     skipPrompt: Boolean,
-  ): Boolean = {
+  ): ConflictResolution = {
     if os.exists(targetPath) then {
       if skipPrompt then {
         println(s"Overwriting: $skillName (all existing files and folders will be removed)".dim)
         os.remove.all(targetPath)
-        true
+        ConflictResolution.Overwrite
       } else {
+        val options = List(
+          "Overwrite    — Replace the existing skill",
+          "Skip         — Keep the existing skill",
+          "Rename       — Keep both (install under a new name)",
+        )
         aiskills.cli.SigintHandler.install()
-        val result = Prompts.sync.use { prompts =>
+        val result  = Prompts.sync.use { prompts =>
           println(
             s"\u26a0 All existing files and folders in '$skillName' will be removed if you choose to overwrite.".yellow
           )
-          prompts.confirm(s"Skill '$skillName' already exists. Overwrite?".yellow, default = false) match {
-            case Completion.Finished(shouldOverwrite) =>
-              if shouldOverwrite then os.remove.all(targetPath) else ()
-              shouldOverwrite.asRight
+          prompts.singleChoice(s"Skill '$skillName' already exists. What would you like to do?".yellow, options) match {
+            case Completion.Finished(selected) =>
+              if selected.startsWith("Overwrite") then {
+                os.remove.all(targetPath)
+                ConflictResolution.Overwrite.asRight
+              } else if selected.startsWith("Rename") then {
+                OverwritePrompt.askNewSkillName(skillName, targetDir) match {
+                  case Left(code) => code.asLeft
+                  case Right(newName) => ConflictResolution.Rename(newName).asRight
+                }
+              } else ConflictResolution.Skip.asRight
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
               0.asLeft
             case Completion.Fail(CompletionError.Error(_)) =>
-              false.asRight
+              ConflictResolution.Skip.asRight
           }
         }
         result match {
@@ -743,7 +796,31 @@ object Install {
         System.err.println("   If you re-enable Claude plugins, this will be overwritten.".dim)
         System.err.println("   Recommend: Use --project flag for conflict-free installation.\n".dim)
       } else ()
-      true
+      ConflictResolution.NoConflict
+    }
+  }
+
+  /** Install a skill under a new name (rename flow). */
+  private def installSkillWithRename(
+    sourceDir: os.Path,
+    targetDir: os.Path,
+    newName: String,
+    metadata: SkillSourceMetadata,
+  ): Unit = {
+    val targetPath = targetDir / newName
+    os.makeDir.all(targetDir)
+    if !isPathInside(targetPath, targetDir) then {
+      System.err.println("Security error: Installation path outside target directory".red)
+      throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
+    } else {
+      os.copy(sourceDir, targetPath, replaceExisting = true)
+      val skillMdPath = targetPath / "SKILL.md"
+      if os.exists(skillMdPath) then {
+        val content = os.read(skillMdPath)
+        val updated = Yaml.replaceYamlField(content, "name", newName)
+        os.write.over(skillMdPath, updated)
+      } else ()
+      SkillMetadata.writeSkillMetadata(targetPath, metadata.copy(name = newName.some))
     }
   }
 }
