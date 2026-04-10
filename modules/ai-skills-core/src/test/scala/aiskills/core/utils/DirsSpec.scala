@@ -27,6 +27,9 @@ object DirsSpec extends Properties {
     example("displaySkillsDir: global Windsurf (asymmetric)", testDisplayGlobalWindsurf),
     example("displaySkillsDir: project Copilot", testDisplayProjectCopilot),
     example("displaySkillsDir: global Copilot (asymmetric)", testDisplayGlobalCopilot),
+    example("displayPath: global path replaces home with ~", testDisplayPathGlobal),
+    example("displayPath: project path shows relative to pwd", testDisplayPathProject),
+    example("displayPath: only replaces home prefix, not duplicates in path", testDisplayPathHomeDuplicate),
     example("getSearchDirs: returns 14 dirs", testSearchDirsCount),
     example("getSearchDirs: correct priority order", testSearchDirsOrder),
     example("getSearchDirs: first is project universal", testSearchDirsFirst),
@@ -88,6 +91,20 @@ object DirsSpec extends Properties {
 
   private def testDisplayGlobalCopilot: Result =
     Dirs.displaySkillsDir(Agent.Copilot, SkillLocation.Global) ==== "~/.copilot/skills"
+
+  private def testDisplayPathGlobal: Result =
+    Dirs.displayPath(os.home / ".claude" / "skills" / "foo") ==== "~/.claude/skills/foo"
+
+  private def testDisplayPathProject: Result =
+    Dirs.displayPath(os.root / "tmp" / ".claude" / "skills" / "foo") ==== "/tmp/.claude/skills/foo"
+
+  private def testDisplayPathHomeDuplicate: Result = {
+    val homeStr  = os.home.toString
+    // e.g. /Users/username/blah/Users/username/something/.claude/skills/foo
+    val path     = os.Path(s"$homeStr/blah$homeStr/something/.claude/skills/foo")
+    val expected = s"~/blah$homeStr/something/.claude/skills/foo"
+    Dirs.displayPath(path) ==== expected
+  }
 
   private def testSearchDirsCount: Result = {
     val dirs = Dirs.getSearchDirs()
