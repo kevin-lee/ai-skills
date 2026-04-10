@@ -164,22 +164,16 @@ object Install {
     val locationLabels = List(
       s"global  ($globalPaths)",
       s"project ($projectPaths)",
+      "both",
     )
 
     aiskills.cli.SigintHandler.install()
     val result = Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select install location", locationLabels, CliDefaults.multiChoiceModify) match {
-        case Completion.Finished(selectedLabels) =>
-          if selectedLabels.isEmpty then {
-            println("No location selected. Defaulting to project.".yellow)
-            Set(SkillLocation.Project).asRight
-          } else {
-            val locs = selectedLabels.foldLeft(Set.empty[SkillLocation]) { (acc, label) =>
-              if label.startsWith("project") then acc + SkillLocation.Project
-              else acc + SkillLocation.Global
-            }
-            locs.asRight
-          }
+      prompts.singleChoice("Select install location", locationLabels) match {
+        case Completion.Finished(selected) =>
+          if selected.startsWith("project") then Set(SkillLocation.Project).asRight
+          else if selected.startsWith("global") then Set(SkillLocation.Global).asRight
+          else Set(SkillLocation.Global, SkillLocation.Project).asRight
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
           0.asLeft
