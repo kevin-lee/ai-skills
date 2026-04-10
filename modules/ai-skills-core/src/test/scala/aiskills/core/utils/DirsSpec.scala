@@ -33,6 +33,9 @@ object DirsSpec extends Properties {
     example("getSearchDirs: returns 14 dirs", testSearchDirsCount),
     example("getSearchDirs: correct priority order", testSearchDirsOrder),
     example("getSearchDirs: first is project universal", testSearchDirsFirst),
+    example("getSearchDirs: returns 7 global-only dirs when pwd is home", testSearchDirsPwdIsHome),
+    example("getSearchDirs: returns 14 dirs when pwd is not home", testSearchDirsPwdIsNotHome),
+    example("getSearchDirs: no-arg delegates to overload with os.pwd", testSearchDirsNoArgDelegates),
   )
 
   private def testProjectUniversal: Result =
@@ -106,13 +109,15 @@ object DirsSpec extends Properties {
     Dirs.displayPath(path) ==== expected
   }
 
+  private val nonHomePwd = os.root / "some" / "project"
+
   private def testSearchDirsCount: Result = {
-    val dirs = Dirs.getSearchDirs()
+    val dirs = Dirs.getSearchDirs(nonHomePwd)
     dirs.length ==== 14
   }
 
   private def testSearchDirsOrder: Result = {
-    val dirs   = Dirs.getSearchDirs()
+    val dirs   = Dirs.getSearchDirs(nonHomePwd)
     val agents = dirs.map { case (_, agent, _) => agent }
     // 1. Project universal
     // 2-7. Project agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini, Windsurf)
@@ -121,7 +126,7 @@ object DirsSpec extends Properties {
     Result.all(
       List(
         // Project universal
-        dirs(0) ==== (os.pwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project),
+        dirs(0) ==== (nonHomePwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project),
         // Project agent-specific (alphabetical)
         agents(1) ==== Agent.Claude,
         agents(2) ==== Agent.Codex,
@@ -147,15 +152,42 @@ object DirsSpec extends Properties {
   }
 
   private def testSearchDirsFirst: Result = {
-    val dirs                    = Dirs.getSearchDirs()
+    val dirs                    = Dirs.getSearchDirs(nonHomePwd)
     val (path, agent, location) = dirs.head
     Result.all(
       List(
-        path ==== (os.pwd / ".agents" / "skills"),
+        path ==== (nonHomePwd / ".agents" / "skills"),
         agent ==== Agent.Universal,
         location ==== SkillLocation.Project,
       )
     )
+  }
+
+  private def testSearchDirsPwdIsHome: Result = {
+    val dirs = Dirs.getSearchDirs(os.home)
+    Result.all(
+      List(
+        dirs.length ==== 7,
+        Result.assert(dirs.forall { case (_, _, location) => location === SkillLocation.Global }),
+      )
+    )
+  }
+
+  private def testSearchDirsPwdIsNotHome: Result = {
+    val dirs = Dirs.getSearchDirs(nonHomePwd)
+    Result.all(
+      List(
+        dirs.length ==== 14,
+        Result.assert(dirs.take(7).forall { case (_, _, location) => location === SkillLocation.Project }),
+        Result.assert(dirs.drop(7).forall { case (_, _, location) => location === SkillLocation.Global }),
+      )
+    )
+  }
+
+  private def testSearchDirsNoArgDelegates: Result = {
+    val noArg   = Dirs.getSearchDirs()
+    val withPwd = Dirs.getSearchDirs(os.pwd)
+    noArg ==== withPwd
   }
 
 }
