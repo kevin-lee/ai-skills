@@ -56,9 +56,7 @@ object Read {
         } do {
           val dir   = Dirs.getSkillsDir(agent, location)
           val scope = location.toString.toLowerCase
-          val label =
-            if dir.startsWith(os.home) then dir.toString.replace(os.home.toString, "~")
-            else dir.relativeTo(os.pwd).toString
+          val label = Dirs.displayPath(dir)
           System.err.println(s"  $label ($scope, ${agent.toString})")
         }
         System.err.println()
@@ -71,7 +69,7 @@ object Read {
         if idx > 0 then println(separator)
         val content = os.read(skill.path)
         println("       Reading:".bold + s" ${name.blue.bold}")
-        println("Base directory:".bold + s" ${skill.baseDir.toString.yellow.bold}")
+        println("Base directory:".bold + s" ${Dirs.displayPath(skill.baseDir).yellow.bold}")
 
         println()
         println(content)
@@ -137,7 +135,7 @@ object Read {
                             val skillPath = skill.path / "SKILL.md"
                             val content   = os.read(skillPath)
                             println("       Reading:".bold + s" ${skill.name.blue.bold}")
-                            println("Base directory:".bold + s" ${skill.path.toString.yellow.bold}")
+                            println("Base directory:".bold + s" ${Dirs.displayPath(skill.path).yellow.bold}")
                             println()
                             println(content)
                             println()

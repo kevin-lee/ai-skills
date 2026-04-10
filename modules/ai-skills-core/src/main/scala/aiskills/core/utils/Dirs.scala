@@ -21,6 +21,12 @@ object Dirs {
       case SkillLocation.Global => s"~/${agent.globalDirName}/skills"
     }
 
+  /** Display-friendly path: replaces home prefix with ~, or shows relative to pwd if possible. */
+  def displayPath(path: os.Path): String =
+    if path.startsWith(os.home) then "~" + path.toString.stripPrefix(os.home.toString)
+    else if path.startsWith(os.pwd) then path.relativeTo(os.pwd).toString
+    else path.toString
+
   /** Get all searchable skill directories in priority order.
     * Priority:
     *   1. Project universal (.agents)
