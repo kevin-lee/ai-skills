@@ -119,7 +119,7 @@ object ListCmd {
     }
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select agent(s)", labels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select agent(s)", labels)) match {
         case Completion.Finished(selectedLabels) =>
           val selected = agentsWithCounts
             .filter { (agent, _) =>

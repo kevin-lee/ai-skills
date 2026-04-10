@@ -84,12 +84,10 @@ object Search {
       promptForMarketplaceResults(results) match {
         case Left(code) => sys.exit(code)
         case Right(selected) =>
-          if selected.isEmpty then println("No skills selected.".yellow)
-          else
-            promptForMarketplaceAction() match {
-              case Left(code) => sys.exit(code)
-              case Right(action) => executeMarketplaceAction(action, selected)
-            }
+          promptForMarketplaceAction() match {
+            case Left(code) => sys.exit(code)
+            case Right(action) => executeMarketplaceAction(action, selected)
+          }
       }
     }
   }
@@ -102,7 +100,7 @@ object Search {
 
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select skill(s)", labels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select skill(s)", labels)) match {
         case Completion.Finished(selectedLabels) =>
           val selectedIndices = selectedLabels.flatMap { label =>
             labels.zipWithIndex.find { case (l, _) => l === label }.map { case (_, idx) => idx }
@@ -217,8 +215,7 @@ object Search {
       case Left(code) => sys.exit(code)
       case Right(a) => a
     }
-    if agents.isEmpty then println("No agents selected. Installation cancelled.".yellow)
-    else {
+    {
       val locations = promptForInstallLocation(agents) match {
         case Left(code) => sys.exit(code)
         case Right(l) => l
@@ -437,7 +434,7 @@ object Search {
     val agentLabels = Agent.all.map(_.toString)
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select target agent(s)", agentLabels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select target agent(s)", agentLabels)) match {
         case Completion.Finished(selectedLabels) =>
           Agent.all.filter(a => selectedLabels.contains(a.toString)).asRight
         case Completion.Fail(CompletionError.Interrupted) =>
@@ -557,12 +554,10 @@ object Search {
         promptForLocalResults(results) match {
           case Left(code) => sys.exit(code)
           case Right(selected) =>
-            if selected.isEmpty then println("No skills selected.".yellow)
-            else
-              promptForLocalAction() match {
-                case Left(code) => sys.exit(code)
-                case Right(action) => executeLocalAction(action, selected)
-              }
+            promptForLocalAction() match {
+              case Left(code) => sys.exit(code)
+              case Right(action) => executeLocalAction(action, selected)
+            }
         }
       }
     }
@@ -577,7 +572,7 @@ object Search {
 
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select skill(s)", labels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select skill(s)", labels)) match {
         case Completion.Finished(selectedLabels) =>
           val selectedIndices = selectedLabels.flatMap { label =>
             labels.zipWithIndex.find { case (l, _) => l === label }.map { case (_, idx) => idx }

@@ -137,13 +137,9 @@ object Install {
 
     aiskills.cli.SigintHandler.install()
     val result = Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select target agent(s)", agentLabels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select target agent(s)", agentLabels)) match {
         case Completion.Finished(selectedLabels) =>
-          val selected = Agent.all.filter(a => selectedLabels.contains(a.toString))
-          if selected.isEmpty then {
-            println("No agents selected. Installation cancelled.".yellow)
-            0.asLeft
-          } else selected.asRight
+          Agent.all.filter(a => selectedLabels.contains(a.toString)).asRight
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
           0.asLeft
@@ -561,13 +557,9 @@ object Install {
 
         aiskills.cli.SigintHandler.install()
         val result = Prompts.sync.use { prompts =>
-          prompts.multiChoiceAllSelected("Select skills to install", labels, CliDefaults.multiChoiceModify) match {
+          prompts.run(CliDefaults.mandatoryMultiChoiceAllSelected("Select skills to install", labels)) match {
             case Completion.Finished(selectedLabels) =>
-              if selectedLabels.isEmpty then {
-                println("No skills selected. Installation cancelled.".yellow)
-                List.empty[SkillInfo].asRight
-              } else
-                selectByLabel(labels, skillInfos, selectedLabels).asRight
+              selectByLabel(labels, skillInfos, selectedLabels).asRight
 
             case Completion.Fail(CompletionError.Interrupted) =>
               println("\n\nCancelled by user".yellow)
