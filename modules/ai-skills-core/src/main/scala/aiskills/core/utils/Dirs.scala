@@ -33,22 +33,32 @@ object Dirs {
     *   2. Project agent-specific (alphabetical by agent name)
     *   3. Global universal (~/.agents)
     *   4. Global agent-specific (alphabetical by agent name)
+    *
+    * When pwd is the home directory, project entries are omitted
+    * because they would resolve to the same paths as global entries.
     */
-  def getSearchDirs(): List[(os.Path, Agent, SkillLocation)] = {
+  def getSearchDirs(): List[(os.Path, Agent, SkillLocation)] =
+    getSearchDirs(os.pwd)
+
+  def getSearchDirs(pwd: os.Path): List[(os.Path, Agent, SkillLocation)] = {
     val agentsSorted = Agent.allNonUniversal.sortBy(_.toString)
 
-    val projectUniversal = List(
-      (os.pwd / os.RelPath(Agent.Universal.projectDirName) / "skills", Agent.Universal, SkillLocation.Project)
-    )
-    val projectSpecific  =
-      agentsSorted.map(a => (os.pwd / os.RelPath(a.projectDirName) / "skills", a, SkillLocation.Project))
-    val globalUniversal  = List(
+    val globalUniversal = List(
       (os.home / os.RelPath(Agent.Universal.globalDirName) / "skills", Agent.Universal, SkillLocation.Global)
     )
-    val globalSpecific   =
+    val globalSpecific  =
       agentsSorted.map(a => (os.home / os.RelPath(a.globalDirName) / "skills", a, SkillLocation.Global))
 
-    projectUniversal ++ projectSpecific ++ globalUniversal ++ globalSpecific
+    if pwd == os.home then globalUniversal ++ globalSpecific
+    else {
+      val projectUniversal = List(
+        (pwd / os.RelPath(Agent.Universal.projectDirName) / "skills", Agent.Universal, SkillLocation.Project)
+      )
+      val projectSpecific  =
+        agentsSorted.map(a => (pwd / os.RelPath(a.projectDirName) / "skills", a, SkillLocation.Project))
+
+      projectUniversal ++ projectSpecific ++ globalUniversal ++ globalSpecific
+    }
   }
 
 }
