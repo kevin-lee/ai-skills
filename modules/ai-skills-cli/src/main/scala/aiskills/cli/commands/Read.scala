@@ -181,7 +181,7 @@ object Read {
     }
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select agent(s)", labels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select agent(s)", labels)) match {
         case Completion.Finished(selectedLabels) =>
           val selected = agentsWithCounts
             .filter { (agent, _) =>
@@ -212,7 +212,7 @@ object Read {
 
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select skill(s) to read", labels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select skill(s) to read", labels)) match {
         case Completion.Finished(selectedLabels) =>
           val selectedIndices = selectedLabels.flatMap { label =>
             labels.zipWithIndex.find { case (l, _) => l === label }.map { case (_, idx) => idx }

@@ -405,11 +405,7 @@ object Sync {
             val selectedSkills = {
               aiskills.cli.SigintHandler.install()
               val result = Prompts.sync.use { prompts =>
-                prompts.multiChoiceAllSelected(
-                  "Select skills to sync",
-                  skillLabels,
-                  CliDefaults.multiChoiceModify
-                ) match {
+                prompts.run(CliDefaults.mandatoryMultiChoiceAllSelected("Select skills to sync", skillLabels)) match {
                   case Completion.Finished(selectedLabels) =>
                     sourceSkills.filter(s => selectedLabels.exists(_.startsWith(s.name))).asRight
                   case Completion.Fail(CompletionError.Interrupted) =>
@@ -461,10 +457,8 @@ object Sync {
               val selectedTargets = {
                 aiskills.cli.SigintHandler.install()
                 val result = Prompts.sync.use { prompts =>
-                  prompts.multiChoiceNoneSelected(
-                    "Select target agent(s)",
-                    targetLabels,
-                    CliDefaults.multiChoiceModify
+                  prompts.run(
+                    CliDefaults.mandatoryMultiChoiceNoneSelected("Select target agent(s)", targetLabels)
                   ) match {
                     case Completion.Finished(selectedLabels) =>
                       targetAgents.filter(a => selectedLabels.contains(a.toString)).asRight

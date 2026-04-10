@@ -76,10 +76,9 @@ object Remove {
 
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select skills to remove", labels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select skills to remove", labels)) match {
         case Completion.Finished(selectedLabels) =>
-          if selectedLabels.isEmpty then println("No skills selected for removal.".yellow)
-          else {
+          {
             val selectedIndices = selectedLabels.flatMap { label =>
               labels.zipWithIndex.find { case (l, _) => l === label }.map { case (_, idx) => idx }
             }
@@ -140,7 +139,7 @@ object Remove {
     }
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
-      prompts.multiChoiceNoneSelected("Select agent(s)", labels, CliDefaults.multiChoiceModify) match {
+      prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select agent(s)", labels)) match {
         case Completion.Finished(selectedLabels) =>
           val selected = agentsWithCounts
             .filter { (agent, _) =>
