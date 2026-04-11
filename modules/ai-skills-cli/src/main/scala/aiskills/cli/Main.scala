@@ -401,6 +401,7 @@ object Main {
           |  aiskills remove commit --agent claude --project --global  # Both scopes, Claude
           |  aiskills remove commit --agent all --project              # Project, all agents
           |  aiskills remove commit --agent all --project --global     # Everywhere, all agents
+          |  aiskills remove commit --agent claude --project -y        # Skip confirmation
           |""".stripMargin,
       ) {
         val skillName = Opts.argument[String](metavar = "skill-name").orNone
@@ -413,11 +414,14 @@ object Main {
             short = "a",
           )
           .orNone
-        (skillName, project, global, agent).mapN { (sn, p, g, a) =>
+        val yes       = Opts.flag("yes", "Skip removal confirmation", short = "y").orFalse
+        (skillName, project, global, agent, yes).mapN { (sn, p, g, a, y) =>
           sn match {
             case None =>
-              if p || g || a.isDefined then {
-                System.err.println("Error: Must specify a skill name when using --project, --global, or --agent.")
+              if p || g || a.isDefined || y then {
+                System
+                  .err
+                  .println("Error: Must specify a skill name when using --project, --global, --agent, or --yes.")
                 System.err.println()
                 System.err.println("  Example: aiskills remove commit --project --agent claude")
                 System.err.println()
@@ -468,7 +472,7 @@ object Main {
                 }
                 .getOrElse(Nil)
 
-              Remove.removeSkill(name, RemoveOptions(locations = locations, agent = parsedAgents.some))
+              Remove.removeSkill(name, RemoveOptions(locations = locations, agent = parsedAgents.some, yes = y))
           }
         }
       }
