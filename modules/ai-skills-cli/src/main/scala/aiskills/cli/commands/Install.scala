@@ -127,7 +127,10 @@ object Install {
       case Some(agents) => (agents, options.locations)
       case None =>
         val agents    = promptForAgents()
-        val locations = if options.locations.nonEmpty then options.locations else promptForLocation(agents)
+        val locations =
+          if options.locations.nonEmpty then options.locations
+          else if os.pwd == os.home then Set(SkillLocation.Global)
+          else promptForLocation(agents)
         (agents, locations)
     }
   }
@@ -217,7 +220,9 @@ object Install {
         println(s"Installing from: ${source.cyan}")
         println(s"Location: $locationDisplay")
         if agents.length <= 1 && locations.size <= 1 then {
-          if !isProject then println(s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim)
+          if !isProject && os.pwd != os.home then println(
+            s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim
+          )
           else ()
         } else ()
         println()
