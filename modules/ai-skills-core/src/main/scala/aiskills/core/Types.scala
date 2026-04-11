@@ -184,6 +184,7 @@ object AiSkillsError {
 final case class RemoveOptions(
   locations: Set[SkillLocation],
   agent: Option[List[Agent]],
+  yes: Boolean,
 ) derives Eq,
       Show
 

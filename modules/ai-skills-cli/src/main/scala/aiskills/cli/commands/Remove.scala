@@ -78,25 +78,31 @@ object Remove {
     Prompts.sync.use { prompts =>
       prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select skills to remove", labels)) match {
         case Completion.Finished(selectedLabels) =>
-          {
-            val selectedIndices = selectedLabels.flatMap { label =>
-              labels.zipWithIndex.find { case (l, _) => l === label }.map { case (_, idx) => idx }
-            }
-            val removedSkills   = selectedIndices.map(sorted(_))
-            for skill <- removedSkills do {
-              os.remove.all(skill.path)
-              val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
-              println(
-                s"\u2705 Removed: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
-              )
-            }
-
-            val agentLocationPairs = removedSkills.map(s => (s.agent, s.location)).distinct
-            for (agent, location) <- agentLocationPairs do AgentsMd.updateAgentsMdForAgent(agent, location)
-
-            println(s"\n\u2705 Removed ${selectedIndices.length} skill(s)".green)
+          val selectedIndices = selectedLabels.flatMap { label =>
+            labels.zipWithIndex.find { case (l, _) => l === label }.map { case (_, idx) => idx }
           }
-          ().asRight
+          val selectedSkills  = selectedIndices.map(sorted(_))
+          confirmRemoval(selectedSkills) match {
+            case Right(true) =>
+              for skill <- selectedSkills do {
+                os.remove.all(skill.path)
+                val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
+                println(
+                  s"\u2705 Removed: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
+                )
+              }
+
+              val agentLocationPairs = selectedSkills.map(s => (s.agent, s.location)).distinct
+              for (agent, location) <- agentLocationPairs do AgentsMd.updateAgentsMdForAgent(agent, location)
+
+              println(s"\n\u2705 Removed ${selectedIndices.length} skill(s)".green)
+              ().asRight
+            case Right(false) =>
+              println("Cancelled.".yellow)
+              ().asRight
+            case Left(code) =>
+              code.asLeft
+          }
 
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
@@ -157,6 +163,59 @@ object Remove {
     }
   }
 
+  private def confirmRemoval(skills: List[Skill]): Either[Int, Boolean] = {
+    println(s"\nThe following skill(s) will be removed:")
+    for skill <- skills do {
+      val pathLabel     = Dirs.displaySkillsDir(skill.agent, skill.location)
+      val locationColor =
+        if skill.location === SkillLocation.Project then skill.location.toString.toLowerCase.blue
+        else skill.location.toString.toLowerCase.yellow
+      println(s"  - ${skill.name.bold} ($locationColor, ${skill.agent.toString.cyan.bold}): ${pathLabel.dim}")
+    }
+    println()
+    aiskills.cli.SigintHandler.install()
+    Prompts.sync.use { prompts =>
+      prompts.confirm("Are you sure?", default = false) match {
+        case Completion.Finished(confirmed) =>
+          confirmed.asRight
+        case Completion.Fail(CompletionError.Interrupted) =>
+          println("\n\nCancelled by user".yellow)
+          0.asLeft
+        case Completion.Fail(CompletionError.Error(msg)) =>
+          System.err.println(s"Error: $msg")
+          1.asLeft
+      }
+    }
+  }
+
+  private def confirmRemovalNonInteractive(
+    skillName: String,
+    foundTargets: List[(Agent, SkillLocation)]
+  ): Either[Int, Boolean] = {
+    println(s"\nThe following skill(s) will be removed:")
+    for (agent, location) <- foundTargets do {
+      val pathLabel     = Dirs.displaySkillsDir(agent, location)
+      val locationColor =
+        if location === SkillLocation.Project then location.toString.toLowerCase.blue
+        else location.toString.toLowerCase.yellow
+      println(s"  - ${skillName.bold} ($locationColor, ${agent.toString.cyan.bold}): ${pathLabel.dim}")
+    }
+    println()
+    aiskills.cli.SigintHandler.install()
+    Prompts.sync.use { prompts =>
+      prompts.confirm("Are you sure?", default = false) match {
+        case Completion.Finished(confirmed) =>
+          confirmed.asRight
+        case Completion.Fail(CompletionError.Interrupted) =>
+          println("\n\nCancelled by user".yellow)
+          0.asLeft
+        case Completion.Fail(CompletionError.Error(msg)) =>
+          System.err.println(s"Error: $msg")
+          1.asLeft
+      }
+    }
+  }
+
   /** Remove a specific skill by name from the specified agent(s) and location(s). */
   def removeSkill(skillName: String, options: RemoveOptions): Unit = {
     val locations: List[SkillLocation] = options.locations.toList
@@ -168,30 +227,20 @@ object Remove {
       location <- locations
     } yield (agent, location)
 
-    val removed  = List.newBuilder[(aiskills.core.Agent, SkillLocation)]
-    val notFound = List.newBuilder[(aiskills.core.Agent, SkillLocation)]
+    val found    = List.newBuilder[(Agent, SkillLocation)]
+    val notFound = List.newBuilder[(Agent, SkillLocation)]
 
     for (agent, location) <- targets do {
       val skillDir = Dirs.getSkillsDir(agent, location) / skillName
-      if os.exists(skillDir / "SKILL.md") then {
-        os.remove.all(skillDir)
-        val pathLabel = Dirs.displaySkillsDir(agent, location)
-        println(
-          s"\u2705 Removed: $skillName (${location.toString.toLowerCase}, ${agent.toString}): $pathLabel".green
-        )
-        removed += agent -> location
-      } else {
-        notFound += agent -> location
-      }
+      if os.exists(skillDir / "SKILL.md")
+      then found += agent    -> location
+      else notFound += agent -> location
     }
 
-    val removedResult  = removed.result()
+    val foundResult    = found.result()
     val notFoundResult = notFound.result()
 
-    val agentLocationPairs = removedResult.distinct
-    for (agent, location) <- agentLocationPairs do AgentsMd.updateAgentsMdForAgent(agent, location)
-
-    if removedResult.isEmpty then {
+    if foundResult.isEmpty then {
       val targetDescs = notFoundResult
         .map { (agent, location) =>
           s"${location.toString.toLowerCase}/${agent.toString}"
@@ -199,15 +248,40 @@ object Remove {
         .mkString(", ")
       System.err.println(s"Error: Skill '$skillName' not found in: $targetDescs")
       sys.exit(1)
-    } else if notFoundResult.nonEmpty then {
-      for (agent, location) <- notFoundResult do {
-        val pathLabel = Dirs.displaySkillsDir(agent, location)
-        System
-          .err
-          .println(
-            s"Warning: Skill '$skillName' not found in ${location.toString.toLowerCase}/${agent.toString}: $pathLabel"
-          )
+    }
+
+    val confirmed =
+      if options.yes then { true }
+      else {
+        confirmRemovalNonInteractive(skillName, foundResult) match {
+          case Right(c) => c
+          case Left(code) => sys.exit(code)
+        }
       }
-    } else ()
+
+    if confirmed then {
+      for (agent, location) <- foundResult do {
+        val skillDir  = Dirs.getSkillsDir(agent, location) / skillName
+        os.remove.all(skillDir)
+        val pathLabel = Dirs.displaySkillsDir(agent, location)
+        println(
+          s"\u2705 Removed: $skillName (${location.toString.toLowerCase}, ${agent.toString}): $pathLabel".green
+        )
+      }
+
+      val agentLocationPairs = foundResult.distinct
+      for (agent, location) <- agentLocationPairs do AgentsMd.updateAgentsMdForAgent(agent, location)
+
+      if notFoundResult.nonEmpty then {
+        for (agent, location) <- notFoundResult do {
+          val pathLabel = Dirs.displaySkillsDir(agent, location)
+          System
+            .err
+            .println(
+              s"Warning: Skill '$skillName' not found in ${location.toString.toLowerCase}/${agent.toString}: $pathLabel"
+            )
+        }
+      } else ()
+    } else println("Cancelled.".yellow)
   }
 }
