@@ -21,6 +21,7 @@ object Main {
                |  aiskills install anthropics/skills               # Install skills from a GitHub repo
                |  aiskills list                                    # See what's installed
                |  aiskills read commit                             # Output a skill (for AI agents)
+               |  aiskills search commit                           # Search for skills
                |  aiskills update                                  # Update all skills from source
                |  aiskills sync --from claude --to cursor          # Copy skills between agents
                |  aiskills remove                                  # Interactive removal
@@ -472,12 +473,75 @@ object Main {
         }
       }
 
+      val searchCommand = Opts.subcommand(
+        "search",
+        """Search for skills from marketplaces or local installations
+          |
+          |Search skills.sh and agentskill.sh marketplaces, or fuzzy-search
+          |your locally installed skills by name and description.
+          |
+          |Interactive mode:
+          |  aiskills search                              # Choose location, enter query interactively
+          |  aiskills search <query>                      # Choose location, search immediately
+          |
+          |Non-interactive mode:
+          |  aiskills search <query> --marketplace        # Search marketplaces (skills.sh, agentskill.sh)
+          |  aiskills search <query> --local              # Search installed skills (fuzzy match)
+          |""".stripMargin,
+      ) {
+        val query       = Opts.argument[String](metavar = "query").orNone
+        val marketplace =
+          Opts.flag("marketplace", "Search from marketplaces (skills.sh, agentskill.sh)", short = "m").orFalse
+        val local       = Opts.flag("local", "Search from local installed skills", short = "l").orFalse
+        (query, marketplace, local).mapN { (q, m, l) =>
+          if m && l then {
+            System.err.println("Error: --marketplace and --local are mutually exclusive.")
+            System.err.println()
+            System.err.println("  Use --marketplace to search from online marketplaces")
+            System.err.println("  Use --local to search from installed skills")
+            sys.exit(1)
+          } else ()
+
+          val hasLocationFlag = m || l
+
+          if hasLocationFlag && q.isEmpty then {
+            System.err.println("Error: Must specify a search query when using --marketplace or --local.")
+            System.err.println()
+            System.err.println("  Example: aiskills search commit --marketplace")
+            System.err.println("  Example: aiskills search commit --local")
+            System.err.println()
+            System.err.println("For interactive search, run without flags:")
+            System.err.println("  aiskills search")
+            sys.exit(1)
+          } else ()
+
+          q match {
+            case Some(query) if query.trim.length < 2 =>
+              System.err.println("Error: Search query must be at least 2 characters.")
+              sys.exit(1)
+
+            case Some(query) if m =>
+              Search.searchMarketplace(query.trim)
+
+            case Some(query) if l =>
+              Search.searchLocal(query.trim)
+
+            case Some(query) =>
+              Search.searchWithQuery(query.trim)
+
+            case None =>
+              Search.searchInteractive()
+          }
+        }
+      }
+
       listCommand
         .orElse(installCommand)
         .orElse(readCommand)
         .orElse(updateCommand)
         .orElse(syncCommand)
         .orElse(removeCommand)
+        .orElse(searchCommand)
     }
   )
 
