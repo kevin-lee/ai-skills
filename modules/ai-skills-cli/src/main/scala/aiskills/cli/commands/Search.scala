@@ -264,8 +264,9 @@ object Search {
   private def readMarketplaceSkillsEnriched(cloned: List[ClonedSkill]): Unit = {
     for (c, idx) <- cloned.zipWithIndex do {
       if idx > 0 then println(separator)
-      println("       Reading:".bold + s" ${c.result.name.blue.bold}")
-      println("        Source:".bold + s" ${c.result.source.yellow.bold} [${c.result.marketplace}]")
+      println(SkillDisplay.padLabel("Reading:").bold + s" ${c.result.name.blue.bold}")
+      println(SkillDisplay.padLabel("Source:").bold + s" ${c.result.source.yellow.bold} [${c.result.marketplace}]")
+      renderMarketplaceInfoBlock(c)
       println()
       if c.skillMdPath.isDefined && c.content.nonEmpty then println(c.content)
       else println("(SKILL.md not found)".yellow)
@@ -609,6 +610,23 @@ object Search {
     (" " * pad) + label
   }
 
+  /** Render the marketplace metadata block (sourceType/source/subpath/name) for a cloned skill.
+    * Used by both marketplace list and marketplace read flows.
+    */
+  private def renderMarketplaceInfoBlock(c: ClonedSkill): Unit = {
+    val r = c.result
+    println(s"${padMarketplaceLabel("sourceType:").bold} git")
+    if r.source.nonEmpty then println(s"${padMarketplaceLabel("source:").bold} ${r.source}")
+    else ()
+
+    val subpathStr     = c.skillDir.relativeTo(c.repoDir).toString
+    val subpathDisplay =
+      if subpathStr.isEmpty || subpathStr === "." then "<root>"
+      else subpathStr
+    println(s"${padMarketplaceLabel("subpath:").bold} $subpathDisplay")
+    println(s"${padMarketplaceLabel("name:").bold} ${c.yamlName}")
+  }
+
   /** Marketplace list display using SKILL.md data from a pre-cloned selection.
     * Omits the `Base directory:` line because the skill is not installed.
     */
@@ -619,16 +637,7 @@ object Search {
       val installLabel = formatInstalls(r.installs)
       println(s"  ${r.name.bold.padTo(25, ' ')} ${r.source.cyan}")
 
-      println(s"${padMarketplaceLabel("sourceType:").bold} git")
-      if r.source.nonEmpty then println(s"${padMarketplaceLabel("source:").bold} ${r.source}")
-      else ()
-
-      val subpathStr     = c.skillDir.relativeTo(c.repoDir).toString
-      val subpathDisplay =
-        if subpathStr.isEmpty || subpathStr === "." then "<root>"
-        else subpathStr
-      println(s"${padMarketplaceLabel("subpath:").bold} $subpathDisplay")
-      println(s"${padMarketplaceLabel("name:").bold} ${c.yamlName}")
+      renderMarketplaceInfoBlock(c)
 
       val description =
         if c.description.nonEmpty then c.description
@@ -729,8 +738,8 @@ object Search {
       if idx > 0 then println(separator)
       val skillPath = skill.path / "SKILL.md"
       val content   = os.read(skillPath)
-      println("       Reading:".bold + s" ${skill.name.blue.bold}")
-      println("Base directory:".bold + s" ${Dirs.displayPath(skill.path).yellow.bold}")
+      println(SkillDisplay.padLabel("Reading:").bold + s" ${skill.name.blue.bold}")
+      SkillDisplay.renderInfoBlock(skill.path)
       println()
       println(content)
       println()
@@ -767,7 +776,7 @@ object Search {
       val locationLabel =
         s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})".blue + s": $pathLabel".dim
       println(s"  ${skill.name.padTo(25, ' ').bold} $locationLabel")
-      SkillDisplay.renderInfoBlock(skill)
+      SkillDisplay.renderInfoBlock(skill.path)
       println(s"    ${skill.description.dim}\n")
     }
     println(s"${skills.length} skill(s) shown".dim)
