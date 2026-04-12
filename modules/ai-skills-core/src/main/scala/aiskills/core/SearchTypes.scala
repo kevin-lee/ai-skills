@@ -15,6 +15,7 @@ final case class SearchOptions(
 
 final case class MarketplaceResult(
   name: String,
+  skillId: String,
   source: String,
   description: String,
   installs: Long,

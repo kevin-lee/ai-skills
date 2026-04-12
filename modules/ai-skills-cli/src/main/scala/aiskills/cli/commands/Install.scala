@@ -273,7 +273,7 @@ object Install {
         case ResolvedSource.Git(repoDir, _, _, _) =>
           val tempDir = repoDir / os.up
           aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
-          aiskills.cli.TempDirCleanup.unregister()
+          aiskills.cli.TempDirCleanup.unregister(tempDir)
         case _ => ()
       }
     }
@@ -334,7 +334,7 @@ object Install {
             if msg.nonEmpty then println(msg.dim) else ()
             println("\nTip: For private repos, ensure git SSH keys or credentials are configured".yellow)
             aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
-            aiskills.cli.TempDirCleanup.unregister()
+            aiskills.cli.TempDirCleanup.unregister(tempDir)
             throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
           case Success(url) =>
             val _ = spinner.succeed(Some("Repository cloned"))

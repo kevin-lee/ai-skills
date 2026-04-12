@@ -16,6 +16,7 @@ object MarketplaceSearch {
 
   final private case class SkillsShSkill(
     name: String,
+    skillId: String,
     installs: Long,
     source: String,
   )
@@ -23,9 +24,10 @@ object MarketplaceSearch {
     given Decoder[SkillsShSkill] = (c: HCursor) =>
       for {
         name     <- c.get[String]("name")
+        skillId  <- c.get[String]("skillId")
         installs <- c.get[Long]("installs")
         source   <- c.get[String]("source")
-      } yield SkillsShSkill(name, installs, source)
+      } yield SkillsShSkill(name, skillId, installs, source)
   }
 
   final private case class SkillsShResponse(skills: List[SkillsShSkill])
@@ -46,6 +48,7 @@ object MarketplaceSearch {
       response.skills.map { skill =>
         MarketplaceResult(
           name = skill.name,
+          skillId = skill.skillId,
           source = skill.source,
           description = "",
           installs = skill.installs,
@@ -96,6 +99,7 @@ object MarketplaceSearch {
           else skill.owner
         MarketplaceResult(
           name = skill.name,
+          skillId = skill.name,
           source = source,
           description = skill.description,
           installs = skill.installCount,
@@ -113,13 +117,21 @@ object MarketplaceSearch {
     deduplicateResults(skillsSh ++ agentSkill)
   }
 
-  /** Deduplicate results by (name, source), preferring higher installs and longer descriptions. */
+  /** Deduplicate results by (name, source), preferring higher installs and longer descriptions.
+    * When the winner has an empty description, it borrows the first non-empty description
+    * from the group so useful descriptions survive dedup regardless of which source won.
+    */
   def deduplicateResults(results: List[MarketplaceResult]): List[MarketplaceResult] =
     results
       .groupBy(r => (r.name.toLowerCase, r.source.toLowerCase))
       .values
       .map { group =>
-        group.maxBy(r => (r.installs, r.description.length))
+        val winner = group.maxBy(r => (r.installs, r.description.length))
+        if winner.description.nonEmpty then winner
+        else {
+          val bestDesc = group.map(_.description).find(_.nonEmpty).getOrElse("")
+          winner.copy(description = bestDesc)
+        }
       }
       .toList
       .sortBy(-_.installs)

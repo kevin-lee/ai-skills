@@ -16,26 +16,31 @@ object TempDirCleanup {
   def safeRemoveAll(dir: os.Path): Unit =
     if isTempDir(dir) then os.remove.all(dir) else ()
 
-  @annotation.nowarn("msg=null")
-  private var currentTempDir: os.Path | Null = null // scalafix:ok DisableSyntax.var,DisableSyntax.null
+  private val dirs: scala.collection.mutable.Set[os.Path] = scala.collection.mutable.Set.empty
 
-  @annotation.nowarn("msg=null")
-  def register(dir: os.Path): Unit =
-    currentTempDir = dir
+  def register(dir: os.Path): Unit = {
+    val _ = dirs.add(dir)
+  }
 
-  @annotation.nowarn("msg=null")
-  def unregister(): Unit =
-    currentTempDir = null // scalafix:ok DisableSyntax.null
+  def unregister(dir: os.Path): Unit = {
+    val _ = dirs.remove(dir)
+  }
 
-  @annotation.nowarn("msg=null")
+  def clearAll(): Unit = {
+    dirs.toList.foreach { d =>
+      try safeRemoveAll(d)
+      catch { case _: Exception => () }
+    }
+    dirs.clear()
+  }
+
   private val atexitRegistered: Boolean = {
     val cleanup: CFuncPtr0[Unit] = CFuncPtr0.fromScalaFunction[Unit] { () =>
-      val dir = currentTempDir
-      if dir != null then { // scalafix:ok DisableSyntax.null
-        try safeRemoveAll(dir)
+      dirs.toList.foreach { d =>
+        try safeRemoveAll(d)
         catch { case _: Exception => () }
-        currentTempDir = null // scalafix:ok DisableSyntax.null
       }
+      dirs.clear()
     }
 
     val _ = stdlib.atexit(cleanup)
