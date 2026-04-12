@@ -1,8 +1,19 @@
 package aiskills.cli.commands
 
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{AgentsMd, Dirs, LocalSearch, MarketplaceSearch, SkillMetadata, Skills, TerminalWidth, Yaml}
+import aiskills.core.utils.{
+  AgentsMd,
+  Dirs,
+  LocalSearch,
+  MarketplaceSearch,
+  SkillMdFinder,
+  SkillMetadata,
+  Skills,
+  TerminalWidth,
+  Yaml
+}
 import aiskills.core.*
+import aiskills.core.given
 import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
@@ -261,13 +272,16 @@ object Search {
 
               val repoDir = tempDir / "repo"
 
-              // Build list of (skillDir, metadata) for all found skills, then install across all agent×location combos
+              // Build list of (skillDir, installName, metadata) for all found skills, then install across all agent×location combos
               val skillEntries = skillNames.flatMap { name =>
                 findSkillMd(repoDir, name) match {
                   case Some(skillMdPath) =>
-                    val skillDir = skillMdPath / os.up
-                    val subpath  = skillDir.relativeTo(repoDir).toString
-                    val metadata = SkillSourceMetadata(
+                    val skillDir    = skillMdPath / os.up
+                    val subpath     = skillDir.relativeTo(repoDir).toString
+                    val content     = Try(os.read(skillMdPath)).getOrElse("")
+                    val yamlName    = Yaml.extractYamlField(content, "name")
+                    val installName = resolveInstallName(skillDir, repoDir, yamlName, name)
+                    val metadata    = SkillSourceMetadata(
                       source = source,
                       sourceType = SkillSourceType.Git,
                       repoUrl = actualUrl.some,
@@ -275,7 +289,7 @@ object Search {
                       localPath = none[String],
                       installedAt = aiskills.core.utils.isoNow(),
                     )
-                    List((skillDir, metadata))
+                    List((skillDir, installName, metadata))
 
                   case None =>
                     System.err.println(s"SKILL.md not found for '$name' in $source".yellow)
@@ -285,14 +299,15 @@ object Search {
 
               // Install each skill across all agent×location combos, threading BulkDecision
               val installTargets = for {
-                (skillDir, metadata) <- skillEntries
-                agent                <- agents
-                location             <- locations.toList
-              } yield (skillDir, agent, location, metadata)
+                (skillDir, installName, metadata) <- skillEntries
+                agent                             <- agents
+                location                          <- locations.toList
+              } yield (skillDir, installName, agent, location, metadata)
 
               installTargets.foldLeft((0, bulk)) {
-                case ((skillCount, currentBulk), (skillDir, agent, location, metadata)) =>
-                  val (installed, nextBulk) = installSingleSkill(skillDir, agent, location, metadata, currentBulk)
+                case ((skillCount, currentBulk), (skillDir, installName, agent, location, metadata)) =>
+                  val (installed, nextBulk) =
+                    installSingleSkill(skillDir, installName, agent, location, metadata, currentBulk)
                   (skillCount + (if installed then 1 else 0), nextBulk)
               }
           }
@@ -319,6 +334,7 @@ object Search {
     */
   private def installSingleSkill(
     skillDir: os.Path,
+    installName: String,
     agent: Agent,
     location: SkillLocation,
     metadata: SkillSourceMetadata,
@@ -334,7 +350,9 @@ object Search {
       if isProject then os.pwd / os.RelPath(folder)
       else os.home / os.RelPath(folder)
 
-    val skillName     = skillDir.last
+    val skillName     = installName
+    val subpath       = metadata.subpath.getOrElse("")
+    val labeledName   = Install.skillNameWithSubpath(skillName, subpath)
     val targetPath    = targetDir / skillName
     val locationLabel = s"(${location.toString.toLowerCase}, ${agent.toString})"
 
@@ -346,32 +364,35 @@ object Search {
         (false, bulk)
       } else if !os.exists(targetPath) then {
         copyAndWriteMetadata(skillDir, targetPath, metadata)
-        println(s"\u2705 Installed: $skillName $locationLabel".green)
+        println(s"\u2705 Installed: $labeledName $locationLabel".green)
         (true, bulk)
       } else {
         bulk match {
           case BulkDecision.OverwriteAll =>
-            overwriteAndInstall(skillDir, targetPath, skillName, locationLabel, metadata)
+            overwriteAndInstall(skillDir, targetPath, labeledName, locationLabel, metadata)
             (true, bulk)
 
           case BulkDecision.SkipAll =>
-            println(s"Skipped: $skillName $locationLabel".yellow)
+            println(s"Skipped: $labeledName $locationLabel".yellow)
             (false, bulk)
 
           case BulkDecision.Undecided =>
+            val existingSubpath = Install.existingSubpathLabel(targetPath)
+            println(s"   Existing: ${Install.skillNameWithSubpath(skillName, existingSubpath)}".dim)
+            println(s"   New:      $labeledName".dim)
             OverwritePrompt.askOverwriteChoice(
               skillName,
-              s"Skill '$skillName' already exists at $locationLabel. What would you like to do?",
+              s"Skill '$skillName' already exists at $locationLabel. Replace with '$labeledName'?",
             ) match {
               case Left(code) =>
                 sys.exit(code)
 
               case Right(OverwriteChoice.Yes) =>
-                overwriteAndInstall(skillDir, targetPath, skillName, locationLabel, metadata)
+                overwriteAndInstall(skillDir, targetPath, labeledName, locationLabel, metadata)
                 (true, BulkDecision.Undecided)
 
               case Right(OverwriteChoice.No) =>
-                println(s"Skipped: $skillName $locationLabel".yellow)
+                println(s"Skipped: $labeledName $locationLabel".yellow)
                 (false, BulkDecision.Undecided)
 
               case Right(OverwriteChoice.Rename) =>
@@ -388,16 +409,16 @@ object Search {
                       os.write.over(skillMdPath, updated)
                     } else ()
                     SkillMetadata.writeSkillMetadata(newTargetPath, metadata.copy(name = newName.some))
-                    println(s"\u2705 Installed: $skillName as $newName $locationLabel".green)
+                    println(s"\u2705 Installed: $labeledName as $newName $locationLabel".green)
                     (true, BulkDecision.Undecided)
                 }
 
               case Right(OverwriteChoice.YesToAll) =>
-                overwriteAndInstall(skillDir, targetPath, skillName, locationLabel, metadata)
+                overwriteAndInstall(skillDir, targetPath, labeledName, locationLabel, metadata)
                 (true, BulkDecision.OverwriteAll)
 
               case Right(OverwriteChoice.NoToAll) =>
-                println(s"Skipped: $skillName $locationLabel".yellow)
+                println(s"Skipped: $labeledName $locationLabel".yellow)
                 (false, BulkDecision.SkipAll)
             }
         }
@@ -420,14 +441,14 @@ object Search {
   private def overwriteAndInstall(
     skillDir: os.Path,
     targetPath: os.Path,
-    skillName: String,
+    labeledName: String,
     locationLabel: String,
     metadata: SkillSourceMetadata,
   ): Unit = {
-    println(s"Overwriting: $skillName $locationLabel".dim)
+    println(s"Overwriting: $labeledName $locationLabel".dim)
     os.remove.all(targetPath)
     copyAndWriteMetadata(skillDir, targetPath, metadata)
-    println(s"\u2705 Installed: $skillName $locationLabel".green)
+    println(s"\u2705 Installed: $labeledName $locationLabel".green)
   }
 
   private def promptForAgents(): Either[Int, List[Agent]] = {
@@ -472,6 +493,28 @@ object Search {
     }
   }
 
+  /** Compute the install folder name for a skill discovered under a cloned repo.
+    *
+    * Preference order:
+    *   - Root-level skill (`skillDir == repoDir`): YAML `name:` -> marketplaceName -> `skillDir.last`
+    *   - Non-root skill: `skillDir.last` -> YAML `name:` -> marketplaceName
+    *
+    * Blank (whitespace-only) candidates are skipped. Falls back to `skillDir.last` if no candidate is non-blank.
+    */
+  private[commands] def resolveInstallName(
+    skillDir: os.Path,
+    repoDir: os.Path,
+    yamlName: String,
+    marketplaceName: String,
+  ): String = {
+    val dirName    = skillDir.last
+    val isRoot     = skillDir === repoDir
+    val candidates =
+      if isRoot then List(yamlName, marketplaceName, dirName)
+      else List(dirName, yamlName, marketplaceName)
+    candidates.find(_.trim.nonEmpty).getOrElse(dirName)
+  }
+
   /** Find a SKILL.md in a repo by skill name.
     *
     * Matching strategy (in priority order):
@@ -506,19 +549,11 @@ object Search {
     }
   }
 
-  /** Collect all SKILL.md files under a directory (non-recursive into SKILL.md subdirs). */
+  /** Collect every SKILL.md under a directory. Uses 'git ls-files' when the directory is a git working tree
+    * (honors .gitignore and never enters .git); falls back to a filesystem walk that skips .git otherwise.
+    */
   private[commands] def collectSkillMds(dir: os.Path): List[os.Path] =
-    Try(os.list(dir)).toOption match {
-      case None => Nil
-      case Some(entries) =>
-        entries.toList.flatMap { entry =>
-          if Try(os.isDir(entry)).getOrElse(false) then {
-            val md = entry / "SKILL.md"
-            if os.exists(md) then List(md)
-            else collectSkillMds(entry)
-          } else Nil
-        }
-    }
+    SkillMdFinder.listSkillMds(dir)
 
   private def displayMarketplaceResults(results: List[MarketplaceResult]): Unit = {
     println("\nSearch Results:\n".bold)
