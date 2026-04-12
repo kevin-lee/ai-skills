@@ -62,6 +62,11 @@ object InstallSpec extends Properties {
     // skillNameWithSubpath
     example("skillNameWithSubpath: formats name with subpath", testSkillNameWithSubpath),
     example("skillNameWithSubpath: distinguishes duplicate names by subpath", testSkillNameWithSubpathDuplicates),
+    example("skillNameWithSubpath: empty subpath renders as <root>", testSkillNameWithSubpathEmpty),
+    example(
+      "skillNameWithSubpath: whitespace-only subpath renders as <root>",
+      testSkillNameWithSubpathWhitespaceOnly,
+    ),
     // existingSubpathLabel
     example("existingSubpathLabel: returns subpath from metadata", testExistingSubpathLabelWithMetadata),
     example("existingSubpathLabel: returns empty when no metadata", testExistingSubpathLabelNoMetadata),
@@ -345,6 +350,12 @@ object InstallSpec extends Properties {
       )
     )
   }
+
+  private def testSkillNameWithSubpathEmpty: Result =
+    Install.skillNameWithSubpath("foo", "") ==== "foo (<root>)"
+
+  private def testSkillNameWithSubpathWhitespaceOnly: Result =
+    Install.skillNameWithSubpath("foo", "   ") ==== "foo (<root>)"
 
   // existingSubpathLabel tests
   private def testExistingSubpathLabelWithMetadata: Result = {

@@ -19,6 +19,9 @@ object SearchSpec extends Properties {
     example("collectSkillMds: returns empty for non-existent directory", testCollectNonExistent),
     example("collectSkillMds: returns empty for empty directory", testCollectEmpty),
     example("collectSkillMds: ignores files (non-directories)", testCollectIgnoresFiles),
+    example("collectSkillMds: finds SKILL.md at the root of the directory", testCollectRootLevel),
+    example("collectSkillMds: finds nested SKILL.md past an ancestor SKILL.md", testCollectNestedPastAncestor),
+    example("collectSkillMds: skips .git directory", testCollectSkipsDotGit),
     // findSkillMd
     example("findSkillMd: finds by direct path", testFindDirectPath),
     example("findSkillMd: finds under skills/ directory", testFindUnderSkills),
@@ -26,6 +29,27 @@ object SearchSpec extends Properties {
     example("findSkillMd: finds by YAML name field (case-insensitive)", testFindByYamlName),
     example("findSkillMd: returns None when skill not found", testFindNotFound),
     example("findSkillMd: prefers direct path over recursive match", testFindPrefersDirectPath),
+    example("findSkillMd: finds root-level SKILL.md by YAML name", testFindRootLevelByYamlName),
+    example("findSkillMd: finds deeply nested skill past an ancestor SKILL.md", testFindNestedPastAncestor),
+    // resolveInstallName
+    example("resolveInstallName: non-root uses skillDir.last", testResolveNameNonRootUsesDirName),
+    example(
+      "resolveInstallName: non-root prefers dirName over yamlName",
+      testResolveNameNonRootPrefersDirNameOverYaml,
+    ),
+    example("resolveInstallName: root uses yamlName first", testResolveNameRootUsesYaml),
+    example(
+      "resolveInstallName: root falls back to marketplaceName when yamlName is blank",
+      testResolveNameRootFallsBackToMarketplaceWhenYamlBlank,
+    ),
+    example(
+      "resolveInstallName: root falls back to skillDir.last when yamlName and marketplaceName are blank",
+      testResolveNameRootFallsBackToDirNameWhenYamlAndMarketBlank,
+    ),
+    example(
+      "resolveInstallName: root prefers yamlName over marketplaceName",
+      testResolveNameRootPrefersYamlOverMarketplace,
+    ),
   )
 
   // --- formatInstalls ---
@@ -90,6 +114,21 @@ object SearchSpec extends Properties {
     mdPath
   }
 
+  private def createSkillMdAt(dir: os.Path, yamlName: String): os.Path = {
+    os.makeDir.all(dir)
+    val mdPath = dir / "SKILL.md"
+    os.write(
+      mdPath,
+      s"""---
+         |name: $yamlName
+         |description: A test skill
+         |---
+         |Content here
+         |""".stripMargin,
+    )
+    mdPath
+  }
+
   private def testCollectDirect: Result =
     withTempDir { dir =>
       val _       = createSkillMd(dir, "skill-a", "Skill A")
@@ -121,6 +160,33 @@ object SearchSpec extends Properties {
       val _       = createSkillMd(dir, "real-skill", "Real Skill")
       val results = Search.collectSkillMds(dir)
       results.length ==== 1
+    }
+
+  private def testCollectRootLevel: Result =
+    withTempDir { dir =>
+      val _ = createSkillMdAt(dir, "root-skill")
+      Search.collectSkillMds(dir) ==== List(dir / "SKILL.md")
+    }
+
+  private def testCollectNestedPastAncestor: Result =
+    withTempDir { dir =>
+      val _ = createSkillMdAt(dir / "a", "a-skill")
+      val _ = createSkillMdAt(dir / "a" / "b", "b-skill")
+      val _ = createSkillMdAt(dir / "a" / "b" / "c", "c-skill")
+      Search.collectSkillMds(dir).length ==== 3
+    }
+
+  private def testCollectSkipsDotGit: Result =
+    withTempDir { dir =>
+      val _       = createSkillMdAt(dir / ".git", "hidden")
+      val realMd  = createSkillMd(dir, "real-skill", "real-skill")
+      val results = Search.collectSkillMds(dir)
+      Result.all(
+        List(
+          results.length ==== 1,
+          results ==== List(realMd),
+        )
+      )
     }
 
   // --- findSkillMd ---
@@ -169,5 +235,81 @@ object SearchSpec extends Properties {
       val _         = createSkillMd(nestedDir, "commit", "commit")
       // Direct path should be preferred
       Search.findSkillMd(dir, "commit") ==== Some(directMd)
+    }
+
+  private def testFindRootLevelByYamlName: Result =
+    withTempDir { dir =>
+      val md = createSkillMdAt(dir, "ai-pdf-filler-cli")
+      Search.findSkillMd(dir, "ai-pdf-filler-cli") ==== Some(md)
+    }
+
+  private def testFindNestedPastAncestor: Result =
+    withTempDir { dir =>
+      val srcDir       = dir / "Packs" / "Utilities" / "src"
+      val documentsDir = srcDir / "Documents"
+      val pdfDir       = documentsDir / "Pdf"
+      val _            = createSkillMdAt(srcDir, "utilities-src")
+      val _            = createSkillMdAt(documentsDir, "documents")
+      val pdfMd        = createSkillMdAt(pdfDir, "Pdf")
+      Search.findSkillMd(dir, "Pdf") ==== Some(pdfMd)
+    }
+
+  // --- resolveInstallName ---
+
+  private def testResolveNameNonRootUsesDirName: Result =
+    withTempDir { repoDir =>
+      val skillDir = repoDir / "foo"
+      Search.resolveInstallName(skillDir, repoDir, yamlName = "Y", marketplaceName = "M") ==== "foo"
+    }
+
+  private def testResolveNameNonRootPrefersDirNameOverYaml: Result =
+    withTempDir { repoDir =>
+      val skillDir = repoDir / "kebab-case"
+      Search.resolveInstallName(
+        skillDir,
+        repoDir,
+        yamlName = "Human Readable",
+        marketplaceName = "m",
+      ) ==== "kebab-case"
+    }
+
+  private def testResolveNameRootUsesYaml: Result =
+    withTempDir { repoDir =>
+      Search.resolveInstallName(
+        repoDir,
+        repoDir,
+        yamlName = "ai-pdf-filler-cli",
+        marketplaceName = "ai-pdf-filler-cli",
+      ) ==== "ai-pdf-filler-cli"
+    }
+
+  private def testResolveNameRootFallsBackToMarketplaceWhenYamlBlank: Result =
+    withTempDir { repoDir =>
+      Search.resolveInstallName(
+        repoDir,
+        repoDir,
+        yamlName = "",
+        marketplaceName = "my-skill",
+      ) ==== "my-skill"
+    }
+
+  private def testResolveNameRootFallsBackToDirNameWhenYamlAndMarketBlank: Result =
+    withTempDir { repoDir =>
+      Search.resolveInstallName(
+        repoDir,
+        repoDir,
+        yamlName = "",
+        marketplaceName = "",
+      ) ==== repoDir.last
+    }
+
+  private def testResolveNameRootPrefersYamlOverMarketplace: Result =
+    withTempDir { repoDir =>
+      Search.resolveInstallName(
+        repoDir,
+        repoDir,
+        yamlName = "from-yaml",
+        marketplaceName = "from-market",
+      ) ==== "from-yaml"
     }
 }

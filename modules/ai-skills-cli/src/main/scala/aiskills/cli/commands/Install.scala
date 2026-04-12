@@ -2,7 +2,7 @@ package aiskills.cli.commands
 
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{AgentsMd, MarketplaceSkills, SkillMetadata, Yaml}
+import aiskills.core.utils.{AgentsMd, MarketplaceSkills, SkillMdFinder, SkillMetadata, Yaml}
 import aiskills.core.*
 import cats.syntax.all.*
 import cue4s.*
@@ -105,9 +105,13 @@ object Install {
   def skillLabel(skillName: String, subpath: String, size: Long): String =
     s"${skillName.padTo(25, ' ')} ($subpath)".padTo(60, ' ') + s" ${formatSize(size)}"
 
-  /** Format a skill name with its subpath for display in messages. */
-  def skillNameWithSubpath(skillName: String, subpath: String): String =
-    s"$skillName ($subpath)"
+  /** Format a skill name with its subpath for display in messages.
+    * Empty or whitespace-only subpath renders as `<root>` to distinguish root-level skills.
+    */
+  def skillNameWithSubpath(skillName: String, subpath: String): String = {
+    val shown = if subpath.trim.isEmpty then "<root>" else subpath
+    s"$skillName ($shown)"
+  }
 
   /** Read the subpath of an already-installed skill from its metadata. */
   def existingSubpathLabel(targetPath: os.Path): String =
@@ -515,15 +519,7 @@ object Install {
     val skillInfos: List[SkillInfo] =
       if rootSkillInfos.nonEmpty then rootSkillInfos
       else {
-        def findSkills(dir: os.Path): List[os.Path] =
-          os.list(dir).toList.flatMap { entry =>
-            if os.isDir(entry) then {
-              if os.exists(entry / "SKILL.md") then List(entry)
-              else findSkills(entry)
-            } else Nil
-          }
-
-        val skillDirs = findSkills(repoDir)
+        val skillDirs = SkillMdFinder.listSkillMds(repoDir).map(_ / os.up)
 
         if skillDirs.isEmpty then {
           System.err.println("Error: No SKILL.md files found in repository".red)
