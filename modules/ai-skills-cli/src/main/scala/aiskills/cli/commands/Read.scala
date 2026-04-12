@@ -68,8 +68,8 @@ object Read {
       for ((name, skill), idx) <- resolvedList.zipWithIndex do {
         if idx > 0 then println(separator)
         val content = os.read(skill.path)
-        println("       Reading:".bold + s" ${name.blue.bold}")
-        println("Base directory:".bold + s" ${Dirs.displayPath(skill.baseDir).yellow.bold}")
+        println(SkillDisplay.padLabel("Reading:").bold + s" ${name.blue.bold}")
+        SkillDisplay.renderInfoBlock(skill.baseDir)
 
         println()
         println(content)
@@ -134,8 +134,8 @@ object Read {
                             if idx > 0 then println(separator)
                             val skillPath = skill.path / "SKILL.md"
                             val content   = os.read(skillPath)
-                            println("       Reading:".bold + s" ${skill.name.blue.bold}")
-                            println("Base directory:".bold + s" ${Dirs.displayPath(skill.path).yellow.bold}")
+                            println(SkillDisplay.padLabel("Reading:").bold + s" ${skill.name.blue.bold}")
+                            SkillDisplay.renderInfoBlock(skill.path)
                             println()
                             println(content)
                             println()

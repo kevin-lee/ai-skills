@@ -1,6 +1,5 @@
 package aiskills.cli.commands
 
-import aiskills.core.Skill
 import aiskills.core.SkillSourceType
 import aiskills.core.utils.{Dirs, SkillMetadata, Yaml}
 import extras.scala.io.syntax.color.*
@@ -17,16 +16,16 @@ object SkillDisplay {
 
   private val ColonCol = 2 + BaseDirLabel.length // 17
 
-  private def padLabel(label: String): String = {
+  def padLabel(label: String): String = {
     val pad = ColonCol - label.length
     (" " * pad) + label
   }
 
-  def renderInfoBlock(skill: Skill): Unit = {
-    val baseDirDisplay = Dirs.displayPath(skill.path)
+  def renderInfoBlock(skillPath: os.Path): Unit = {
+    val baseDirDisplay = Dirs.displayPath(skillPath)
     println(s"${padLabel(BaseDirLabel).bold} ${baseDirDisplay.yellow.bold}")
 
-    val metadataOpt = SkillMetadata.readSkillMetadata(skill.path)
+    val metadataOpt = SkillMetadata.readSkillMetadata(skillPath)
 
     metadataOpt match {
       case None =>
@@ -55,7 +54,7 @@ object SkillDisplay {
         }
     }
 
-    val skillMdPath = skill.path / "SKILL.md"
+    val skillMdPath = skillPath / "SKILL.md"
     val yamlName    =
       if os.exists(skillMdPath) then Try(os.read(skillMdPath))
         .toOption

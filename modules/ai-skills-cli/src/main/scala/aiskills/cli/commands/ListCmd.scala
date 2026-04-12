@@ -159,7 +159,7 @@ object ListCmd {
       val locationLabel =
         s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})".blue + s": $pathLabel".dim
       println(s"  ${skill.name.padTo(25, ' ').bold} $locationLabel")
-      SkillDisplay.renderInfoBlock(skill)
+      SkillDisplay.renderInfoBlock(skill.path)
       println(s"    ${skill.description.dim}\n")
     }
 
