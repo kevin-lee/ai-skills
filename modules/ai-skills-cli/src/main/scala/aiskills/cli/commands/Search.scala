@@ -95,10 +95,7 @@ object Search {
       promptForMarketplaceResults(results) match {
         case Left(code) => sys.exit(code)
         case Right(selected) =>
-          promptForMarketplaceAction() match {
-            case Left(code) => sys.exit(code)
-            case Right(action) => executeMarketplaceAction(action, selected)
-          }
+          runMarketplaceActionLoop(selected)
       }
     }
   }
@@ -130,14 +127,15 @@ object Search {
   }
 
   private enum MarketplaceAction {
-    case ReadSkill, InstallSkill, ListSkill
+    case ReadSkill, InstallSkill, ListSkill, Finish
   }
 
   private def promptForMarketplaceAction(): Either[Int, MarketplaceAction] = {
     val options = List(
-      "read    — Read skill content (clones repo temporarily)",
-      "install — Install selected skill(s)",
       "list    — Display skill details",
+      "read    — Read skill content",
+      "install — Install selected skill(s)",
+      "finish  — Finish",
     )
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
@@ -145,7 +143,8 @@ object Search {
         case Completion.Finished(selected) =>
           if selected.startsWith("read") then MarketplaceAction.ReadSkill.asRight
           else if selected.startsWith("install") then MarketplaceAction.InstallSkill.asRight
-          else MarketplaceAction.ListSkill.asRight
+          else if selected.startsWith("list") then MarketplaceAction.ListSkill.asRight
+          else MarketplaceAction.Finish.asRight
 
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
@@ -158,175 +157,222 @@ object Search {
     }
   }
 
-  private def executeMarketplaceAction(action: MarketplaceAction, selected: List[MarketplaceResult]): Unit =
-    action match {
-      case MarketplaceAction.ListSkill =>
-        displayMarketplaceResults(selected)
+  /** A marketplace skill that has been cloned (or attempted) for offline inspection. */
+  final private case class ClonedSkill(
+    result: MarketplaceResult,
+    repoDir: os.Path,
+    skillDir: os.Path,
+    skillMdPath: Option[os.Path],
+    content: String,
+    description: String,
+    yamlName: String,
+    actualRepoUrl: String,
+    tempDir: os.Path,
+  )
 
-      case MarketplaceAction.InstallSkill =>
-        installMarketplaceSkills(selected)
-
-      case MarketplaceAction.ReadSkill =>
-        readMarketplaceSkills(selected)
-    }
-
-  private def readMarketplaceSkills(selected: List[MarketplaceResult]): Unit = {
+  /** Clone each unique source once, build a ClonedSkill per selected entry.
+    * On clone failure for a source: print a warning and drop skills from that source.
+    */
+  private def cloneSelected(selected: List[MarketplaceResult]): List[ClonedSkill] = {
     aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
 
-    for (result, idx) <- selected.zipWithIndex do {
-      if idx > 0 then println(separator)
+    val bySource = selected.groupBy(_.source)
 
-      val tempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
-      os.makeDir.all(tempDir)
-      aiskills.cli.TempDirCleanup.register(tempDir)
+    bySource.toList.flatMap {
+      case (source, results) =>
+        val repoUrl = s"https://github.com/$source"
 
-      val spinner = Spinner.createDefaultSideEffect(
-        SpinnerConfig
-          .default
-          .withText(s"Cloning ${result.source}...")
-          .withColor(Color.cyan)
-          .withIndent(2),
-      )
-      val _       = spinner.start()
+        val tempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}-${Integer.toHexString(source.hashCode)}"
+        os.makeDir.all(tempDir)
+        aiskills.cli.TempDirCleanup.register(tempDir)
 
-      Try {
-        Install.cloneWithFallback(s"https://github.com/${result.source}", (tempDir / "repo").toString)
-      } match {
-        case scala.util.Failure(_) =>
-          val _ = spinner.fail(Some(s"Failed to clone ${result.source}"))
-          System.err.println(s"Could not clone repository: ${result.source}".red)
+        val spinner = Spinner.createDefaultSideEffect(
+          SpinnerConfig
+            .default
+            .withText(s"Cloning $source...")
+            .withColor(Color.cyan)
+            .withIndent(2),
+        )
+        val _       = spinner.start()
 
-        case scala.util.Success(_) =>
-          val _ = spinner.succeed(Some(s"Cloned ${result.source}"))
+        Try {
+          Install.cloneWithFallback(repoUrl, (tempDir / "repo").toString)
+        } match {
+          case scala.util.Failure(_) =>
+            val _ = spinner.fail(Some(s"Failed to clone $source"))
+            System.err.println(s"Could not clone repository: $source".red)
+            aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
+            aiskills.cli.TempDirCleanup.unregister(tempDir)
+            Nil
 
-          val repoDir = tempDir / "repo"
-          findSkillMd(repoDir, result.name) match {
-            case Some(skillMdPath) =>
-              val content = os.read(skillMdPath)
-              println("       Reading:".bold + s" ${result.name.blue.bold}")
-              println("        Source:".bold + s" ${result.source.yellow.bold} [${result.marketplace}]")
-              println()
-              println(content)
-              println()
-              println("Skill read:".bold + s" ${result.name.blue.bold}")
+          case scala.util.Success(actualUrl) =>
+            val _ = spinner.succeed(Some(s"Cloned $source"))
 
-            case None =>
-              System.err.println(s"SKILL.md not found for '${result.name}' in ${result.source}".yellow)
-          }
-      }
+            val repoDir = tempDir / "repo"
 
-      aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
-      aiskills.cli.TempDirCleanup.unregister()
+            results.flatMap { result =>
+              findSkillMd(repoDir, result.skillId) match {
+                case Some(skillMdPath) =>
+                  val skillDir    = skillMdPath / os.up
+                  val content     = Try(os.read(skillMdPath)).getOrElse("")
+                  val yamlName    = Yaml.extractYamlField(content, "name")
+                  val description = Yaml.extractYamlField(content, "description")
+                  List(
+                    ClonedSkill(
+                      result = result,
+                      repoDir = repoDir,
+                      skillDir = skillDir,
+                      skillMdPath = skillMdPath.some,
+                      content = content,
+                      description = description,
+                      yamlName = yamlName,
+                      actualRepoUrl = actualUrl,
+                      tempDir = tempDir,
+                    )
+                  )
+
+                case None =>
+                  System.err.println(s"SKILL.md not found for '${result.skillId}' in $source".yellow)
+                  List(
+                    ClonedSkill(
+                      result = result,
+                      repoDir = repoDir,
+                      skillDir = repoDir,
+                      skillMdPath = none[os.Path],
+                      content = "",
+                      description = "",
+                      yamlName = "",
+                      actualRepoUrl = actualUrl,
+                      tempDir = tempDir,
+                    )
+                  )
+              }
+            }
+        }
     }
   }
 
-  private def installMarketplaceSkills(selected: List[MarketplaceResult]): Unit = {
-    // 1. Prompt for agents and location once
-    val agents = promptForAgents() match {
-      case Left(code) => sys.exit(code)
-      case Right(a) => a
+  /** Remove and unregister all unique temp dirs from a cloned selection. */
+  private def cleanupClonedTempDirs(cloned: List[ClonedSkill]): Unit = {
+    cloned.map(_.tempDir).distinct.foreach { dir =>
+      aiskills.cli.TempDirCleanup.safeRemoveAll(dir)
+      aiskills.cli.TempDirCleanup.unregister(dir)
     }
-    {
-      val locations = promptForInstallLocation(agents) match {
-        case Left(code) => sys.exit(code)
-        case Right(l) => l
+  }
+
+  /** Read action using pre-cloned SKILL.md content. */
+  private def readMarketplaceSkillsEnriched(cloned: List[ClonedSkill]): Unit = {
+    for (c, idx) <- cloned.zipWithIndex do {
+      if idx > 0 then println(separator)
+      println("       Reading:".bold + s" ${c.result.name.blue.bold}")
+      println("        Source:".bold + s" ${c.result.source.yellow.bold} [${c.result.marketplace}]")
+      println()
+      if c.skillMdPath.isDefined && c.content.nonEmpty then println(c.content)
+      else println("(SKILL.md not found)".yellow)
+      println()
+      println("Skill read:".bold + s" ${c.result.name.blue.bold}")
+    }
+  }
+
+  /** Install action using pre-cloned skill dirs. Agents/locations prompted by the caller. */
+  private def installMarketplaceSkillsEnriched(
+    cloned: List[ClonedSkill],
+    agents: List[Agent],
+    locations: Set[SkillLocation],
+  ): Unit = {
+    import OverwritePrompt.BulkDecision
+
+    val installable = cloned.filter(_.skillMdPath.isDefined)
+
+    val skillEntries = installable.map { c =>
+      val subpath     = c.skillDir.relativeTo(c.repoDir).toString
+      val installName = resolveInstallName(c.skillDir, c.repoDir, c.yamlName, c.result.skillId)
+      val metadata    = SkillSourceMetadata(
+        source = c.result.source,
+        sourceType = SkillSourceType.Git,
+        repoUrl = c.actualRepoUrl.some,
+        subpath = subpath.some,
+        localPath = none[String],
+        installedAt = aiskills.core.utils.isoNow(),
+      )
+      (c.skillDir, installName, metadata)
+    }
+
+    val installTargets = for {
+      (skillDir, installName, metadata) <- skillEntries
+      agent                             <- agents
+      location                          <- locations.toList
+    } yield (skillDir, installName, agent, location, metadata)
+
+    val (installedCount, _) = installTargets.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
+      case ((skillCount, currentBulk), (skillDir, installName, agent, location, metadata)) =>
+        val (installed, nextBulk) =
+          installSingleSkill(skillDir, installName, agent, location, metadata, currentBulk)
+        (skillCount + (if installed then 1 else 0), nextBulk)
+    }
+
+    if installedCount > 0 then {
+      println(s"\n\u2705 Installation complete: $installedCount skill(s) installed".green)
+      println(s"\n${"Read skill:".dim} ${"aiskills read <skill-name>".cyan}")
+      if locations.contains(SkillLocation.Project) then println(
+        s"${"Sync to other agents:".dim} ${"aiskills sync <skill-name> --from <agent> --to <agent>".cyan}"
+      )
+      else ()
+    } else ()
+  }
+
+  /** Action loop for marketplace: clone once on first action needing it, reuse thereafter. */
+  private def runMarketplaceActionLoop(selected: List[MarketplaceResult]): Unit = {
+    aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
+
+    def ensureCloned(current: Option[List[ClonedSkill]]): List[ClonedSkill] =
+      current.getOrElse(cloneSelected(selected))
+
+    def exitWithCleanup(current: Option[List[ClonedSkill]], code: Int): Unit = {
+      current.foreach(cleanupClonedTempDirs)
+      sys.exit(code)
+    }
+
+    @scala.annotation.tailrec
+    def loop(current: Option[List[ClonedSkill]]): Option[List[ClonedSkill]] =
+      promptForMarketplaceAction() match {
+        case Left(code) =>
+          exitWithCleanup(current, code)
+          current
+
+        case Right(MarketplaceAction.Finish) =>
+          current
+
+        case Right(MarketplaceAction.ReadSkill) =>
+          val cloned = ensureCloned(current)
+          readMarketplaceSkillsEnriched(cloned)
+          loop(cloned.some)
+
+        case Right(MarketplaceAction.ListSkill) =>
+          val cloned = ensureCloned(current)
+          displayMarketplaceResultsEnriched(cloned)
+          loop(cloned.some)
+
+        case Right(MarketplaceAction.InstallSkill) =>
+          val agents    = promptForAgents() match {
+            case Left(code) =>
+              exitWithCleanup(current, code)
+              Nil
+            case Right(a) => a
+          }
+          val locations = promptForInstallLocation(agents) match {
+            case Left(code) =>
+              exitWithCleanup(current, code)
+              Set.empty[SkillLocation]
+            case Right(l) => l
+          }
+          val cloned    = ensureCloned(current)
+          installMarketplaceSkillsEnriched(cloned, agents, locations)
+          cloned.some
       }
 
-      // 2. Group by source to clone each repo only once
-      val bySource = selected.groupBy(_.source)
-
-      aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
-
-      import OverwritePrompt.BulkDecision
-
-      val (installedCount, _) = bySource.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
-        case ((count, bulk), (source, results)) =>
-          val skillNames = results.map(_.name)
-          val repoUrl    = s"https://github.com/$source"
-
-          val tempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
-          os.makeDir.all(tempDir)
-          aiskills.cli.TempDirCleanup.register(tempDir)
-
-          val spinner = Spinner.createDefaultSideEffect(
-            SpinnerConfig
-              .default
-              .withText(s"Cloning $source...")
-              .withColor(Color.cyan)
-              .withIndent(2),
-          )
-          val _       = spinner.start()
-
-          val cloneResult = Try {
-            Install.cloneWithFallback(repoUrl, (tempDir / "repo").toString)
-          }
-
-          val (repoCount, newBulk) = cloneResult match {
-            case scala.util.Failure(_) =>
-              val _ = spinner.fail(Some(s"Failed to clone $source"))
-              System.err.println(s"Could not clone repository: $source".red)
-              (0, bulk)
-
-            case scala.util.Success(actualUrl) =>
-              val _ = spinner.succeed(Some(s"Cloned $source"))
-
-              val repoDir = tempDir / "repo"
-
-              // Build list of (skillDir, installName, metadata) for all found skills, then install across all agent×location combos
-              val skillEntries = skillNames.flatMap { name =>
-                findSkillMd(repoDir, name) match {
-                  case Some(skillMdPath) =>
-                    val skillDir    = skillMdPath / os.up
-                    val subpath     = skillDir.relativeTo(repoDir).toString
-                    val content     = Try(os.read(skillMdPath)).getOrElse("")
-                    val yamlName    = Yaml.extractYamlField(content, "name")
-                    val installName = resolveInstallName(skillDir, repoDir, yamlName, name)
-                    val metadata    = SkillSourceMetadata(
-                      source = source,
-                      sourceType = SkillSourceType.Git,
-                      repoUrl = actualUrl.some,
-                      subpath = subpath.some,
-                      localPath = none[String],
-                      installedAt = aiskills.core.utils.isoNow(),
-                    )
-                    List((skillDir, installName, metadata))
-
-                  case None =>
-                    System.err.println(s"SKILL.md not found for '$name' in $source".yellow)
-                    Nil
-                }
-              }
-
-              // Install each skill across all agent×location combos, threading BulkDecision
-              val installTargets = for {
-                (skillDir, installName, metadata) <- skillEntries
-                agent                             <- agents
-                location                          <- locations.toList
-              } yield (skillDir, installName, agent, location, metadata)
-
-              installTargets.foldLeft((0, bulk)) {
-                case ((skillCount, currentBulk), (skillDir, installName, agent, location, metadata)) =>
-                  val (installed, nextBulk) =
-                    installSingleSkill(skillDir, installName, agent, location, metadata, currentBulk)
-                  (skillCount + (if installed then 1 else 0), nextBulk)
-              }
-          }
-
-          aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
-          aiskills.cli.TempDirCleanup.unregister()
-
-          (count + repoCount, newBulk)
-      }
-
-      if installedCount > 0 then {
-        println(s"\n\u2705 Installation complete: $installedCount skill(s) installed".green)
-        println(s"\n${"Read skill:".dim} ${"aiskills read <skill-name>".cyan}")
-        if locations.contains(SkillLocation.Project) then println(
-          s"${"Sync to other agents:".dim} ${"aiskills sync <skill-name> --from <agent> --to <agent>".cyan}"
-        )
-        else ()
-      } else ()
-    }
+    val finalCloned = loop(none[List[ClonedSkill]])
+    finalCloned.foreach(cleanupClonedTempDirs)
   }
 
   /** Install a single skill directory to a specific agent and location.
@@ -555,17 +601,44 @@ object Search {
   private[commands] def collectSkillMds(dir: os.Path): List[os.Path] =
     SkillMdFinder.listSkillMds(dir)
 
-  private def displayMarketplaceResults(results: List[MarketplaceResult]): Unit = {
+  /** Right-align a label to the column of `Base directory:` used by SkillDisplay. Same ColonCol = 17. */
+  private val MarketplaceInfoColonCol = 17
+
+  private def padMarketplaceLabel(label: String): String = {
+    val pad = MarketplaceInfoColonCol - label.length
+    (" " * pad) + label
+  }
+
+  /** Marketplace list display using SKILL.md data from a pre-cloned selection.
+    * Omits the `Base directory:` line because the skill is not installed.
+    */
+  private def displayMarketplaceResultsEnriched(cloned: List[ClonedSkill]): Unit = {
     println("\nSearch Results:\n".bold)
-    for result <- results do {
-      val installLabel = formatInstalls(result.installs)
-      println(s"  ${result.name.bold.padTo(25, ' ')} ${result.source.cyan}")
-      if result.description.nonEmpty then println(s"    ${result.description.dim}")
+    for c <- cloned do {
+      val r            = c.result
+      val installLabel = formatInstalls(r.installs)
+      println(s"  ${r.name.bold.padTo(25, ' ')} ${r.source.cyan}")
+
+      println(s"${padMarketplaceLabel("sourceType:").bold} git")
+      if r.source.nonEmpty then println(s"${padMarketplaceLabel("source:").bold} ${r.source}")
       else ()
-      println(s"    ${"Installs:".dim} $installLabel  ${"Marketplace:".dim} ${result.marketplace}")
+
+      val subpathStr     = c.skillDir.relativeTo(c.repoDir).toString
+      val subpathDisplay =
+        if subpathStr.isEmpty || subpathStr === "." then "<root>"
+        else subpathStr
+      println(s"${padMarketplaceLabel("subpath:").bold} $subpathDisplay")
+      println(s"${padMarketplaceLabel("name:").bold} ${c.yamlName}")
+
+      val description =
+        if c.description.nonEmpty then c.description
+        else r.description
+      if description.nonEmpty then println(s"    ${description.dim}")
+      else ()
+      println(s"    ${"Installs:".dim} $installLabel  ${"Marketplace:".dim} ${r.marketplace}")
       println()
     }
-    println(s"${results.length} skill(s) shown".dim)
+    println(s"${cloned.length} skill(s) shown".dim)
   }
 
   // ── Local search flow ─────────────────────────────────────────────
@@ -589,10 +662,7 @@ object Search {
         promptForLocalResults(results) match {
           case Left(code) => sys.exit(code)
           case Right(selected) =>
-            promptForLocalAction() match {
-              case Left(code) => sys.exit(code)
-              case Right(action) => executeLocalAction(action, selected)
-            }
+            runLocalActionLoop(selected)
         }
       }
     }
@@ -626,20 +696,22 @@ object Search {
   }
 
   private enum LocalAction {
-    case ReadSkill, ListSkill
+    case ReadSkill, ListSkill, Finish
   }
 
   private def promptForLocalAction(): Either[Int, LocalAction] = {
     val options = List(
-      "read — Read skill content",
-      "list — Display skill details",
+      "list   — Display skill details",
+      "read   — Read skill content",
+      "finish — Finish",
     )
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
       prompts.singleChoice("What would you like to do?", options) match {
         case Completion.Finished(selected) =>
           if selected.startsWith("read") then LocalAction.ReadSkill.asRight
-          else LocalAction.ListSkill.asRight
+          else if selected.startsWith("list") then LocalAction.ListSkill.asRight
+          else LocalAction.Finish.asRight
 
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
@@ -652,24 +724,38 @@ object Search {
     }
   }
 
-  private def executeLocalAction(action: LocalAction, selected: List[Skill]): Unit =
-    action match {
-      case LocalAction.ListSkill =>
-        displayLocalResults(selected)
-
-      case LocalAction.ReadSkill =>
-        for (skill, idx) <- selected.zipWithIndex do {
-          if idx > 0 then println(separator)
-          val skillPath = skill.path / "SKILL.md"
-          val content   = os.read(skillPath)
-          println("       Reading:".bold + s" ${skill.name.blue.bold}")
-          println("Base directory:".bold + s" ${Dirs.displayPath(skill.path).yellow.bold}")
-          println()
-          println(content)
-          println()
-          println("Skill read:".bold + s" ${skill.name.blue.bold}")
-        }
+  private def readLocalSkills(selected: List[Skill]): Unit =
+    for (skill, idx) <- selected.zipWithIndex do {
+      if idx > 0 then println(separator)
+      val skillPath = skill.path / "SKILL.md"
+      val content   = os.read(skillPath)
+      println("       Reading:".bold + s" ${skill.name.blue.bold}")
+      println("Base directory:".bold + s" ${Dirs.displayPath(skill.path).yellow.bold}")
+      println()
+      println(content)
+      println()
+      println("Skill read:".bold + s" ${skill.name.blue.bold}")
     }
+
+  /** Action loop for local search: read / list / finish. */
+  private def runLocalActionLoop(selected: List[Skill]): Unit = {
+    @scala.annotation.tailrec
+    def loop(): Unit =
+      promptForLocalAction() match {
+        case Left(code) =>
+          sys.exit(code)
+        case Right(LocalAction.Finish) =>
+          ()
+        case Right(LocalAction.ReadSkill) =>
+          readLocalSkills(selected)
+          loop()
+        case Right(LocalAction.ListSkill) =>
+          displayLocalResults(selected)
+          loop()
+      }
+
+    loop()
+  }
 
   private def displayLocalResults(skills: List[Skill]): Unit = {
     println("\nSearch Results:\n".bold)
@@ -681,6 +767,7 @@ object Search {
       val locationLabel =
         s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})".blue + s": $pathLabel".dim
       println(s"  ${skill.name.padTo(25, ' ').bold} $locationLabel")
+      SkillDisplay.renderInfoBlock(skill)
       println(s"    ${skill.description.dim}\n")
     }
     println(s"${skills.length} skill(s) shown".dim)

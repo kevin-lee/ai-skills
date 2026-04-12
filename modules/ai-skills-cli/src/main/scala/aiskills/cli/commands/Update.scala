@@ -171,7 +171,7 @@ object Update {
             }
           } finally {
             aiskills.cli.TempDirCleanup.safeRemoveAll(parentTempDir)
-            aiskills.cli.TempDirCleanup.unregister()
+            aiskills.cli.TempDirCleanup.unregister(parentTempDir)
           }
         } else ()
 

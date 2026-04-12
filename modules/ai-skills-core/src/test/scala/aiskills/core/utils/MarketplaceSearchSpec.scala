@@ -26,6 +26,11 @@ object MarketplaceSearchSpec extends Properties {
     example("deduplicateResults: sorts by installs descending", testDeduplicateSortOrder),
     example("deduplicateResults: returns empty for empty input", testDeduplicateEmpty),
     example("deduplicateResults: keeps distinct skills", testDeduplicateKeepsDistinct),
+    example("deduplicateResults: merges non-empty description onto empty winner", testDeduplicateMergesDescriptions),
+    example(
+      "deduplicateResults: keeps winner's description when non-empty",
+      testDeduplicateKeepsWinnerDescriptionWhenNonEmpty
+    ),
   )
 
   // --- skills.sh ---
@@ -39,6 +44,7 @@ object MarketplaceSearchSpec extends Properties {
         Result.assert(results.isDefined),
         results.get.length ==== 1,
         results.get.head.name ==== "git-commit",
+        results.get.head.skillId ==== "skill",
         results.get.head.source ==== "owner/repo",
         results.get.head.installs ==== 1000L,
         results.get.head.marketplace ==== "skills.sh",
@@ -75,6 +81,7 @@ object MarketplaceSearchSpec extends Properties {
         Result.assert(results.isDefined),
         results.get.length ==== 1,
         results.get.head.name ==== "commit",
+        results.get.head.skillId ==== "commit",
         results.get.head.installs ==== 500L,
         results.get.head.marketplace ==== "agentskill.sh",
         results.get.head.description ==== "A commit skill",
@@ -118,16 +125,16 @@ object MarketplaceSearchSpec extends Properties {
 
   private def testDeduplicateRemovesDuplicates: Result = {
     val results = List(
-      MarketplaceResult("commit", "owner/repo", "desc1", 100, "skills.sh"),
-      MarketplaceResult("commit", "owner/repo", "desc2", 200, "agentskill.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "desc1", 100, "skills.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "desc2", 200, "agentskill.sh"),
     )
     MarketplaceSearch.deduplicateResults(results).length ==== 1
   }
 
   private def testDeduplicatePrefersHigherInstalls: Result = {
     val results = List(
-      MarketplaceResult("commit", "owner/repo", "", 100, "skills.sh"),
-      MarketplaceResult("commit", "owner/repo", "", 500, "agentskill.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "", 100, "skills.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "", 500, "agentskill.sh"),
     )
     val deduped = MarketplaceSearch.deduplicateResults(results)
     deduped.head.installs ==== 500L
@@ -135,8 +142,8 @@ object MarketplaceSearchSpec extends Properties {
 
   private def testDeduplicatePrefersLongerDesc: Result = {
     val results = List(
-      MarketplaceResult("commit", "owner/repo", "", 100, "skills.sh"),
-      MarketplaceResult("commit", "owner/repo", "A useful skill", 100, "agentskill.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "", 100, "skills.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "A useful skill", 100, "agentskill.sh"),
     )
     val deduped = MarketplaceSearch.deduplicateResults(results)
     deduped.head.description ==== "A useful skill"
@@ -144,17 +151,17 @@ object MarketplaceSearchSpec extends Properties {
 
   private def testDeduplicateCaseInsensitive: Result = {
     val results = List(
-      MarketplaceResult("Commit", "Owner/Repo", "", 100, "skills.sh"),
-      MarketplaceResult("commit", "owner/repo", "", 200, "agentskill.sh"),
+      MarketplaceResult("Commit", "Commit", "Owner/Repo", "", 100, "skills.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "", 200, "agentskill.sh"),
     )
     MarketplaceSearch.deduplicateResults(results).length ==== 1
   }
 
   private def testDeduplicateSortOrder: Result = {
     val results = List(
-      MarketplaceResult("alpha", "a/repo", "", 50, "skills.sh"),
-      MarketplaceResult("beta", "b/repo", "", 200, "skills.sh"),
-      MarketplaceResult("gamma", "c/repo", "", 100, "skills.sh"),
+      MarketplaceResult("alpha", "alpha", "a/repo", "", 50, "skills.sh"),
+      MarketplaceResult("beta", "beta", "b/repo", "", 200, "skills.sh"),
+      MarketplaceResult("gamma", "gamma", "c/repo", "", 100, "skills.sh"),
     )
     val deduped = MarketplaceSearch.deduplicateResults(results)
     val names   = deduped.map(_.name)
@@ -166,10 +173,34 @@ object MarketplaceSearchSpec extends Properties {
 
   private def testDeduplicateKeepsDistinct: Result = {
     val results = List(
-      MarketplaceResult("commit", "owner/repo-a", "", 100, "skills.sh"),
-      MarketplaceResult("commit", "owner/repo-b", "", 200, "skills.sh"),
-      MarketplaceResult("pdf", "owner/repo-a", "", 50, "skills.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo-a", "", 100, "skills.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo-b", "", 200, "skills.sh"),
+      MarketplaceResult("pdf", "pdf", "owner/repo-a", "", 50, "skills.sh"),
     )
     MarketplaceSearch.deduplicateResults(results).length ==== 3
+  }
+
+  private def testDeduplicateMergesDescriptions: Result = {
+    val results = List(
+      MarketplaceResult("commit", "commit", "owner/repo", "", 500, "skills.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "A useful skill", 100, "agentskill.sh"),
+    )
+    val deduped = MarketplaceSearch.deduplicateResults(results)
+    Result.all(
+      List(
+        deduped.length ==== 1,
+        deduped.head.installs ==== 500L,
+        deduped.head.description ==== "A useful skill",
+      )
+    )
+  }
+
+  private def testDeduplicateKeepsWinnerDescriptionWhenNonEmpty: Result = {
+    val results = List(
+      MarketplaceResult("commit", "commit", "owner/repo", "win-desc", 500, "skills.sh"),
+      MarketplaceResult("commit", "commit", "owner/repo", "lose-desc", 100, "agentskill.sh"),
+    )
+    val deduped = MarketplaceSearch.deduplicateResults(results)
+    deduped.head.description ==== "win-desc"
   }
 }

@@ -108,19 +108,18 @@ final case class SkillMetadata(
       Show
 
 enum SkillSourceType derives Eq, Show {
-  case Git, GitHub, Local
+  case Git, Local
 }
 object SkillSourceType {
 
   given Encoder[SkillSourceType] = Encoder.encodeString.contramap {
     case SkillSourceType.Git => "git"
-    case SkillSourceType.GitHub => "github"
     case SkillSourceType.Local => "local"
   }
 
   given Decoder[SkillSourceType] = Decoder.decodeString.emap {
     case "git" => SkillSourceType.Git.asRight
-    case "github" => SkillSourceType.GitHub.asRight
+    case "github" => SkillSourceType.Git.asRight // legacy alias
     case "local" => SkillSourceType.Local.asRight
     case other => s"Invalid SkillSourceType: $other".asLeft
   }
