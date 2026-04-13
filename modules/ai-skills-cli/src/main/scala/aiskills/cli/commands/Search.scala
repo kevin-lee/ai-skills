@@ -182,9 +182,7 @@ object Search {
       case (source, results) =>
         val repoUrl = s"https://github.com/$source"
 
-        val tempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}-${Integer.toHexString(source.hashCode)}"
-        os.makeDir.all(tempDir)
-        aiskills.cli.TempDirCleanup.register(tempDir)
+        val tempDir = aiskills.cli.TempDirCleanup.createTempDir()
 
         val spinner = Spinner.createDefaultSideEffect(
           SpinnerConfig
