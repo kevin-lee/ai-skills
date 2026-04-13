@@ -14,7 +14,7 @@
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/kevin-lee/ai-skills">
 </p>
 
-`ai-skills` is a native CLI tool for managing reusable prompt skills for AI coding agents. It can install and manage AI agent skills (`SKILL.md`) and provides commands to `install`, `list`, `read`, `update`, `sync`, and `remove` skills across project-local and global directories for multiple AI agents.
+`ai-skills` is a native CLI tool for managing reusable prompt skills for AI coding agents. It can install and manage AI agent skills (`SKILL.md`) and provides commands to `install`, `list`, `read`, `search`, `update`, `sync`, and `remove` skills across project-local and global directories for multiple AI agents.
 
 Built with Scala 3 and Scala Native — compiles to a standalone binary with no JVM or Node.js runtime required.
 
