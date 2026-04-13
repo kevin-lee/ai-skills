@@ -102,9 +102,7 @@ object Update {
               meta.repoUrl.fold("")(normalizeRepoUrl)
           }
 
-          val parentTempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
-          os.makeDir.all(parentTempDir)
-          aiskills.cli.TempDirCleanup.register(parentTempDir)
+          val parentTempDir = aiskills.cli.TempDirCleanup.createTempDir()
 
           try {
             groupedByRepo.iterator.zipWithIndex.foreach {
@@ -119,7 +117,7 @@ object Update {
                 val spinner = Spinner.createDefaultSideEffect(
                   SpinnerConfig
                     .default
-                    .withText(s"Cloning ${cloneUrl}${skillsLabel}...")
+                    .withText(s"Cloning $cloneUrl$skillsLabel...")
                     .withColor(Color.cyan)
                     .withIndent(2),
                 )

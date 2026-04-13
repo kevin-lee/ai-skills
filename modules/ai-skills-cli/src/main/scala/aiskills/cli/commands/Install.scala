@@ -311,9 +311,7 @@ object Install {
     } else {
       val (repoUrl, skillSubpath) = parseGitSource(source)
 
-      val tempDir = os.home / s".aiskills-temp-${System.currentTimeMillis()}"
-      os.makeDir.all(tempDir)
-      aiskills.cli.TempDirCleanup.register(tempDir)
+      val tempDir = aiskills.cli.TempDirCleanup.createTempDir()
 
       val spinner = Spinner.createDefaultSideEffect(
         SpinnerConfig
