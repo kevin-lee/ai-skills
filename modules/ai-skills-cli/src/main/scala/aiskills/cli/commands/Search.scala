@@ -209,7 +209,7 @@ object Search {
             val repoDir = tempDir / "repo"
 
             results.flatMap { result =>
-              findSkillMd(repoDir, result.skillId) match {
+              findSkillMd(repoDir, result.skillId, result.name) match {
                 case Some(skillMdPath) =>
                   val skillDir    = skillMdPath / os.up
                   val content     = Try(os.read(skillMdPath)).getOrElse("")
@@ -230,7 +230,12 @@ object Search {
                   )
 
                 case None =>
-                  System.err.println(s"SKILL.md not found for '${result.skillId}' in $source".yellow)
+                  val trimmedName = result.name.trim
+                  val notFoundMsg =
+                    if trimmedName.nonEmpty && trimmedName =!= result.skillId.trim
+                    then s"SKILL.md not found for '${result.skillId}' (name: '${result.name}') in $source"
+                    else s"SKILL.md not found for '${result.skillId}' in $source"
+                  System.err.println(notFoundMsg.yellow)
                   List(
                     ClonedSkill(
                       result = result,
@@ -560,37 +565,81 @@ object Search {
     candidates.find(_.trim.nonEmpty).getOrElse(dirName)
   }
 
-  /** Find a SKILL.md in a repo by skill name.
+  private def alnumNormalize(s: String): String =
+    s.toLowerCase.filter(_.isLetterOrDigit)
+
+  /** Find a SKILL.md in a repo by marketplace skillId and display name.
     *
     * Matching strategy (in priority order):
-    *  1. Direct path: repoDir/skillName/SKILL.md
-    *  2. Under skills/: repoDir/skills/skillName/SKILL.md
-    *  3. Directory name match (recursive): any dir whose name equals skillName
-    *  4. YAML name match: any SKILL.md whose frontmatter `name` field matches (case-insensitive).
-    *     This handles marketplace names like "pdf merge & split" where the directory is "pdf-merge-split".
+    *  1. Direct path: repoDir/skillId/SKILL.md
+    *  2. Under skills/: repoDir/skills/skillId/SKILL.md
+    *  3. Directory name match (recursive): any dir whose name equals skillId, then displayName
+    *  4. YAML name match (case-insensitive, trimmed): any SKILL.md whose frontmatter `name`
+    *     matches skillId, then displayName.
+    *  5. Alphanumeric-only fuzzy match (last resort): any SKILL.md whose directory name or YAML
+    *     `name` collapses (lowercase, letters/digits only) to the same string as skillId or
+    *     displayName. Returns None on ambiguity (more than one distinct SKILL.md matches).
+    *
+    * This handles marketplace names like "pdf-ocr-extraction" (where only displayName
+    * "pdf ocr extraction" matches the YAML "PDF OCR Extraction") and "pdf-merge-&-split"
+    * (where dir "pdf-merge-split" only matches after alphanumeric normalization).
     */
-  private[commands] def findSkillMd(repoDir: os.Path, skillName: String): Option[os.Path] = {
-    val directPath = repoDir / skillName / "SKILL.md"
-    val skillsPath = repoDir / "skills" / skillName / "SKILL.md"
+  private[commands] def findSkillMd(
+    repoDir: os.Path,
+    skillId: String,
+    displayName: String,
+  ): Option[os.Path] = {
+    val directPath = repoDir / skillId / "SKILL.md"
+    val skillsPath = repoDir / "skills" / skillId / "SKILL.md"
 
     if os.exists(directPath) then directPath.some
     else if os.exists(skillsPath) then skillsPath.some
     else {
-      // Collect all SKILL.md files in the repo
       val allSkillMds = collectSkillMds(repoDir)
 
-      // Try matching by directory name
-      allSkillMds
-        .find { md => (md / os.up).last === skillName }
+      // Tier 3: Directory name exact match (skillId first, then displayName)
+      val tier3 = allSkillMds
+        .find { md => (md / os.up).last === skillId }
         .orElse {
-          // Try matching by YAML name field (case-insensitive)
-          val normalizedQuery = skillName.toLowerCase.trim
-          allSkillMds.find { md =>
-            val content  = Try(os.read(md)).getOrElse("")
-            val yamlName = Yaml.extractYamlField(content, "name")
-            yamlName.toLowerCase.trim === normalizedQuery
+          allSkillMds.find { md => (md / os.up).last === displayName }
+        }
+
+      tier3.orElse {
+        // Cache YAML name reads for tiers 4 and 5
+        val yamlNames: Map[os.Path, String] = allSkillMds.map { md =>
+          val content = Try(os.read(md)).getOrElse("")
+          md -> Yaml.extractYamlField(content, "name")
+        }.toMap
+
+        // Tier 4: YAML name exact match (case-insensitive, trimmed), skillId first then displayName
+        val skillIdNorm     = skillId.toLowerCase.trim
+        val displayNameNorm = displayName.toLowerCase.trim
+        val tier4           = allSkillMds
+          .find { md => yamlNames(md).toLowerCase.trim === skillIdNorm }
+          .orElse {
+            allSkillMds.find { md => yamlNames(md).toLowerCase.trim === displayNameNorm }
+          }
+
+        tier4.orElse {
+          // Tier 5: Alphanumeric-only fuzzy match, ambiguity returns None
+          val skillIdAlnum     = alnumNormalize(skillId)
+          val displayNameAlnum = alnumNormalize(displayName)
+          val targets          = Set(skillIdAlnum, displayNameAlnum).filter(_.nonEmpty)
+
+          if targets.isEmpty then none[os.Path]
+          else {
+            val candidates = allSkillMds.filter { md =>
+              val dirAlnum  = alnumNormalize((md / os.up).last)
+              val yamlAlnum = alnumNormalize(yamlNames(md))
+              targets.contains(dirAlnum) || targets.contains(yamlAlnum)
+            }
+            candidates match {
+              case single :: Nil => single.some
+              case _ => none[os.Path]
+            }
           }
         }
+      }
     }
   }
 
