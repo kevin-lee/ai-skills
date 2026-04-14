@@ -31,6 +31,18 @@ object SearchSpec extends Properties {
     example("findSkillMd: prefers direct path over recursive match", testFindPrefersDirectPath),
     example("findSkillMd: finds root-level SKILL.md by YAML name", testFindRootLevelByYamlName),
     example("findSkillMd: finds deeply nested skill past an ancestor SKILL.md", testFindNestedPastAncestor),
+    example(
+      "findSkillMd: matches tier 4 via displayName when skillId differs by punctuation",
+      testFindByDisplayNameYamlMatch
+    ),
+    example("findSkillMd: matches tier 5 via alphanumeric fuzzy normalization", testFindByAlnumDirMatch),
+    example("findSkillMd: returns None when tier 5 produces ambiguous matches", testFindAlnumAmbiguityReturnsNone),
+    example("findSkillMd: strict tiers preempt tier 5 fuzzy match", testFindStrictTierPreemptsAlnum),
+    example(
+      "findSkillMd: within a tier, skillId candidate is tried before displayName",
+      testFindSkillIdTakesPrecedenceOverDisplayName
+    ),
+    example("findSkillMd: empty displayName falls back cleanly to skillId", testFindEmptyDisplayNameFallsBackToSkillId),
     // resolveInstallName
     example("resolveInstallName: non-root uses skillDir.last", testResolveNameNonRootUsesDirName),
     example(
@@ -194,7 +206,7 @@ object SearchSpec extends Properties {
   private def testFindDirectPath: Result =
     withTempDir { dir =>
       val md = createSkillMd(dir, "commit", "commit")
-      Search.findSkillMd(dir, "commit") ==== Some(md)
+      Search.findSkillMd(dir, "commit", "commit") ==== Some(md)
     }
 
   private def testFindUnderSkills: Result =
@@ -202,7 +214,7 @@ object SearchSpec extends Properties {
       val skillsDir = dir / "skills"
       os.makeDir.all(skillsDir)
       val md        = createSkillMd(skillsDir, "commit", "commit")
-      Search.findSkillMd(dir, "commit") ==== Some(md)
+      Search.findSkillMd(dir, "commit", "commit") ==== Some(md)
     }
 
   private def testFindByDirName: Result =
@@ -210,20 +222,20 @@ object SearchSpec extends Properties {
       val nested = dir / "some" / "path"
       os.makeDir.all(nested)
       val md     = createSkillMd(nested, "commit", "commit")
-      Search.findSkillMd(dir, "commit") ==== Some(md)
+      Search.findSkillMd(dir, "commit", "commit") ==== Some(md)
     }
 
   private def testFindByYamlName: Result =
     withTempDir { dir =>
       // Directory name is kebab-case, but YAML name has spaces
       val md = createSkillMd(dir, "pdf-merge-split", "PDF Merge & Split")
-      Search.findSkillMd(dir, "pdf merge & split") ==== Some(md)
+      Search.findSkillMd(dir, "pdf merge & split", "pdf merge & split") ==== Some(md)
     }
 
   private def testFindNotFound: Result =
     withTempDir { dir =>
       val _ = createSkillMd(dir, "commit", "commit")
-      Search.findSkillMd(dir, "nonexistent") ==== None
+      Search.findSkillMd(dir, "nonexistent", "nonexistent") ==== None
     }
 
   private def testFindPrefersDirectPath: Result =
@@ -234,13 +246,13 @@ object SearchSpec extends Properties {
       os.makeDir.all(nestedDir)
       val _         = createSkillMd(nestedDir, "commit", "commit")
       // Direct path should be preferred
-      Search.findSkillMd(dir, "commit") ==== Some(directMd)
+      Search.findSkillMd(dir, "commit", "commit") ==== Some(directMd)
     }
 
   private def testFindRootLevelByYamlName: Result =
     withTempDir { dir =>
       val md = createSkillMdAt(dir, "ai-pdf-filler-cli")
-      Search.findSkillMd(dir, "ai-pdf-filler-cli") ==== Some(md)
+      Search.findSkillMd(dir, "ai-pdf-filler-cli", "ai-pdf-filler-cli") ==== Some(md)
     }
 
   private def testFindNestedPastAncestor: Result =
@@ -251,8 +263,59 @@ object SearchSpec extends Properties {
       val _            = createSkillMdAt(srcDir, "utilities-src")
       val _            = createSkillMdAt(documentsDir, "documents")
       val pdfMd        = createSkillMdAt(pdfDir, "Pdf")
-      Search.findSkillMd(dir, "Pdf") ==== Some(pdfMd)
+      Search.findSkillMd(dir, "Pdf", "Pdf") ==== Some(pdfMd)
     }
+
+  private def testFindByDisplayNameYamlMatch: Result =
+    withTempDir { dir =>
+      // skills.sh case: skillId "pdf-ocr-extraction" differs from YAML name "PDF OCR Extraction"
+      // by hyphen-vs-space, but displayName "pdf ocr extraction" matches via tier 4.
+      val md = createSkillMd(dir, "pdf-ocr", "PDF OCR Extraction")
+      Search.findSkillMd(dir, "pdf-ocr-extraction", "pdf ocr extraction") ==== Some(md)
+    }
+
+  private def testFindByAlnumDirMatch: Result =
+    withTempDir { dir =>
+      // skills.sh case: skillId "pdf-merge-&-split" has an '&' that the dir "pdf-merge-split"
+      // lacks. Only tier 5 (alphanumeric collapse) resolves this.
+      val md = createSkillMd(dir, "pdf-merge-split", "PDF Merge & Split")
+      Search.findSkillMd(dir, "pdf-merge-&-split", "pdf merge & split") ==== Some(md)
+    }
+
+  private def testFindAlnumAmbiguityReturnsNone: Result =
+    withTempDir { dir =>
+      val _ = createSkillMd(dir, "pdf-merge-split", "Alpha")
+      val _ = createSkillMd(dir, "pdf.merge.split", "Beta")
+      Search.findSkillMd(dir, "pdf-merge-&-split", "pdf merge & split") ==== None
+    }
+
+  private def testFindStrictTierPreemptsAlnum: Result =
+    withTempDir { dir =>
+      val commitMd = createSkillMd(dir, "commit", "commit")
+      val _        = createSkillMd(dir, "comm-it", "comm it")
+      Search.findSkillMd(dir, "commit", "commit") ==== Some(commitMd)
+    }
+
+  private def testFindSkillIdTakesPrecedenceOverDisplayName: Result =
+    withTempDir { dir =>
+      val fooMd = createSkillMd(dir, "foo", "foo")
+      val _     = createSkillMd(dir, "bar", "baz")
+      Search.findSkillMd(dir, "foo", "baz") ==== Some(fooMd)
+    }
+
+  private def testFindEmptyDisplayNameFallsBackToSkillId: Result =
+    Result.all(
+      List(
+        withTempDir { dir =>
+          val md = createSkillMd(dir, "commit", "commit")
+          Search.findSkillMd(dir, "commit", "") ==== Some(md)
+        },
+        withTempDir { dir =>
+          val _ = createSkillMd(dir, "commit", "commit")
+          Search.findSkillMd(dir, "nonexistent", "") ==== None
+        },
+      )
+    )
 
   // --- resolveInstallName ---
 
