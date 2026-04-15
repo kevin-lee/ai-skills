@@ -1,5 +1,7 @@
 package aiskills.cli
 
+import cats.syntax.all.*
+
 import scala.scalanative.unsafe.*
 import scala.scalanative.unsigned.*
 
@@ -32,7 +34,7 @@ object SigintHandler {
         cur(9) = 'J'.toByte
         val _   = unistd.write(1, cur, 10.toUSize)
 
-        if sig == 2 then { // SIGINT
+        if sig === 2 then { // SIGINT
           // "\nCancelled by Ctrl+C\n" = 21 bytes
           val msg = stackalloc[Byte](21)
           msg(0) = '\n'.toByte

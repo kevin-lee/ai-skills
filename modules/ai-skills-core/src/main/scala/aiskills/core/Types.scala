@@ -31,7 +31,7 @@ object Agent {
   def needsAgentsMd(agent: Agent): Boolean =
     agent match {
       case Agent.Universal | Agent.Codex => true
-      case _ => false
+      case Agent.Claude | Agent.Cursor | Agent.Gemini | Agent.Windsurf | Agent.Copilot => false
     }
 
   given Encoder[Agent] = Encoder.encodeString.contramap(_.toString.toLowerCase)
