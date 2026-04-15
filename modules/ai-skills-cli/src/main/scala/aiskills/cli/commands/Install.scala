@@ -3,7 +3,7 @@ package aiskills.cli.commands
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
 import aiskills.core.utils.{AgentsMd, MarketplaceSkills, SkillMdFinder, SkillMetadata, Yaml}
-import aiskills.core.*
+import aiskills.core.{*, given}
 import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
@@ -133,7 +133,7 @@ object Install {
         val agents    = promptForAgents()
         val locations =
           if options.locations.nonEmpty then options.locations
-          else if os.pwd == os.home then Set(SkillLocation.Global)
+          else if os.pwd === os.home then Set(SkillLocation.Global)
           else promptForLocation(agents)
         (agents, locations)
     }
@@ -224,7 +224,7 @@ object Install {
         println(s"Installing from: ${source.cyan}")
         println(s"Location: $locationDisplay")
         if agents.length <= 1 && locations.size <= 1 then {
-          if !isProject && os.pwd != os.home then println(
+          if !isProject && os.pwd =!= os.home then println(
             s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim
           )
           else ()
@@ -274,7 +274,7 @@ object Install {
           val tempDir = repoDir / os.up
           aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
           aiskills.cli.TempDirCleanup.unregister(tempDir)
-        case _ => ()
+        case ResolvedSource.Local(_, _) => ()
       }
     }
   }

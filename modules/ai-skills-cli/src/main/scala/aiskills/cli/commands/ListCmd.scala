@@ -154,7 +154,7 @@ object ListCmd {
 
     val sorted = skills.sortBy(s => (s.agent.ordinal, s.location, s.name))
 
-    for skill <- sorted do {
+    sorted.foreach { skill =>
       val pathLabel     = Dirs.displaySkillsDir(skill.agent, skill.location)
       val locationLabel =
         s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})".blue + s": $pathLabel".dim

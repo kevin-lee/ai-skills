@@ -265,16 +265,17 @@ object Search {
 
   /** Read action using pre-cloned SKILL.md content. */
   private def readMarketplaceSkillsEnriched(cloned: List[ClonedSkill]): Unit = {
-    for (c, idx) <- cloned.zipWithIndex do {
-      if idx > 0 then println(separator)
-      println(SkillDisplay.padLabel("Reading:").bold + s" ${c.result.name.blue.bold}")
-      println(SkillDisplay.padLabel("Source:").bold + s" ${c.result.source.yellow.bold} [${c.result.marketplace}]")
-      renderMarketplaceInfoBlock(c)
-      println()
-      if c.skillMdPath.isDefined && c.content.nonEmpty then println(c.content)
-      else println("(SKILL.md not found)".yellow)
-      println()
-      println("Skill read:".bold + s" ${c.result.name.blue.bold}")
+    cloned.zipWithIndex.foreach {
+      case (c, idx) =>
+        if idx > 0 then println(separator)
+        println(SkillDisplay.padLabel("Reading:").bold + s" ${c.result.name.blue.bold}")
+        println(SkillDisplay.padLabel("Source:").bold + s" ${c.result.source.yellow.bold} [${c.result.marketplace}]")
+        renderMarketplaceInfoBlock(c)
+        println()
+        if c.skillMdPath.isDefined && c.content.nonEmpty then println(c.content)
+        else println("(SKILL.md not found)".yellow)
+        println()
+        println("Skill read:".bold + s" ${c.result.name.blue.bold}")
     }
   }
 
@@ -679,7 +680,7 @@ object Search {
     */
   private def displayMarketplaceResultsEnriched(cloned: List[ClonedSkill]): Unit = {
     println("\nSearch Results:\n".bold)
-    for c <- cloned do {
+    cloned.foreach { c =>
       val r            = c.result
       val installLabel = formatInstalls(r.installs)
       println(s"  ${r.name.bold.padTo(25, ' ')} ${r.source.cyan}")
@@ -781,16 +782,17 @@ object Search {
   }
 
   private def readLocalSkills(selected: List[Skill]): Unit =
-    for (skill, idx) <- selected.zipWithIndex do {
-      if idx > 0 then println(separator)
-      val skillPath = skill.path / "SKILL.md"
-      val content   = os.read(skillPath)
-      println(SkillDisplay.padLabel("Reading:").bold + s" ${skill.name.blue.bold}")
-      SkillDisplay.renderInfoBlock(skill.path)
-      println()
-      println(content)
-      println()
-      println("Skill read:".bold + s" ${skill.name.blue.bold}")
+    selected.zipWithIndex.foreach {
+      case (skill, idx) =>
+        if idx > 0 then println(separator)
+        val skillPath = skill.path / "SKILL.md"
+        val content   = os.read(skillPath)
+        println(SkillDisplay.padLabel("Reading:").bold + s" ${skill.name.blue.bold}")
+        SkillDisplay.renderInfoBlock(skill.path)
+        println()
+        println(content)
+        println()
+        println("Skill read:".bold + s" ${skill.name.blue.bold}")
     }
 
   /** Action loop for local search: read / list / finish. */
@@ -818,7 +820,7 @@ object Search {
 
     val sorted = skills.sortBy(s => (s.agent.ordinal, s.location.ordinal, s.name))
 
-    for skill <- sorted do {
+    sorted.foreach { skill =>
       val pathLabel     = Dirs.displaySkillsDir(skill.agent, skill.location)
       val locationLabel =
         s"(${skill.location.toString.toLowerCase}, ${skill.agent.toString})".blue + s": $pathLabel".dim

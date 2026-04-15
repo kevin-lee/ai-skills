@@ -1,5 +1,7 @@
 package aiskills.core.utils
 
+import cats.syntax.all.*
+
 import scala.util.matching.Regex
 
 object Yaml {
@@ -16,7 +18,7 @@ object Yaml {
         val value = m.group(1).trim
         value match {
           case blockScalarIndicator(indicator) =>
-            extractBlockScalarValue(content, m.end, isFolded = indicator == ">")
+            extractBlockScalarValue(content, m.end, isFolded = indicator === ">")
           case _ => value
         }
       case None => ""

@@ -2,6 +2,8 @@ package aiskills.core.utils
 
 import java.util.Date
 
+import cats.syntax.all.*
+
 import scala.annotation.tailrec
 
 /** Generate an ISO-8601-like timestamp string, compatible with Scala Native. */
@@ -54,4 +56,4 @@ private def computeMonth(month: Int, remainingDays: Int, monthDays: Array[Int]):
 }
 
 private def isLeapYear(y: Int): Boolean =
-  (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
+  (y % 4 === 0 && y % 100 =!= 0) || (y % 400 === 0)

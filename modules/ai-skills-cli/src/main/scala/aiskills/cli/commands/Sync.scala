@@ -38,12 +38,12 @@ object Sync {
             sys.exit(1)
           }
 
-          for target <- targets.filterNot(_ === from) do {
+          targets.filterNot(_ === from).foreach { target =>
             syncSelectedSkillsWithLocations(found, from, target, sourceLocation, targetLocations, options.yes)
           }
         } else {
           // All skills
-          for target <- targets.filterNot(_ === from) do {
+          targets.filterNot(_ === from).foreach { target =>
             syncAllSkillsWithLocations(from, target, sourceLocation, targetLocations, options.yes)
           }
         }
@@ -173,7 +173,7 @@ object Sync {
           s"\n\u2705 Sync complete: $synced skill(s) synced from ${from.toString} to ${to.toString}".green
         )
 
-        for targetLocation <- targetLocations do {
+        targetLocations.foreach { targetLocation =>
           AgentsMd.updateAgentsMdForAgent(to, targetLocation)
         }
       }
@@ -272,7 +272,7 @@ object Sync {
         s"\n\u2705 Sync complete: $synced skill(s) synced from ${from.toString} to ${to.toString}".green
       )
 
-      for targetLocation <- targetLocations do {
+      targetLocations.foreach { targetLocation =>
         AgentsMd.updateAgentsMdForAgent(to, targetLocation)
       }
     }
@@ -478,7 +478,7 @@ object Sync {
 
               if selectedTargets.isEmpty then println("No target agents selected.".yellow)
               else
-                for target <- selectedTargets do {
+                selectedTargets.foreach { target =>
                   syncSelectedSkillsWithLocations(selectedSkills, from, target, sourceLocation, targetLocations, yes)
                 }
             }

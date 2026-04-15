@@ -84,7 +84,7 @@ object Remove {
           val selectedSkills  = selectedIndices.map(sorted(_))
           confirmRemoval(selectedSkills) match {
             case Right(true) =>
-              for skill <- selectedSkills do {
+              selectedSkills.foreach { skill =>
                 os.remove.all(skill.path)
                 val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
                 println(
@@ -93,7 +93,7 @@ object Remove {
               }
 
               val agentLocationPairs = selectedSkills.map(s => (s.agent, s.location)).distinct
-              for (agent, location) <- agentLocationPairs do AgentsMd.updateAgentsMdForAgent(agent, location)
+              agentLocationPairs.foreach { case (agent, location) => AgentsMd.updateAgentsMdForAgent(agent, location) }
 
               println(s"\n\u2705 Removed ${selectedIndices.length} skill(s)".green)
               ().asRight
@@ -165,7 +165,7 @@ object Remove {
 
   private def confirmRemoval(skills: List[Skill]): Either[Int, Boolean] = {
     println(s"\nThe following skill(s) will be removed:")
-    for skill <- skills do {
+    skills.foreach { skill =>
       val pathLabel     = Dirs.displaySkillsDir(skill.agent, skill.location)
       val locationColor =
         if skill.location === SkillLocation.Project then skill.location.toString.toLowerCase.blue
@@ -193,12 +193,13 @@ object Remove {
     foundTargets: List[(Agent, SkillLocation)]
   ): Either[Int, Boolean] = {
     println(s"\nThe following skill(s) will be removed:")
-    for (agent, location) <- foundTargets do {
-      val pathLabel     = Dirs.displaySkillsDir(agent, location)
-      val locationColor =
-        if location === SkillLocation.Project then location.toString.toLowerCase.blue
-        else location.toString.toLowerCase.yellow
-      println(s"  - ${skillName.bold} ($locationColor, ${agent.toString.cyan.bold}): ${pathLabel.dim}")
+    foundTargets.foreach {
+      case (agent, location) =>
+        val pathLabel     = Dirs.displaySkillsDir(agent, location)
+        val locationColor =
+          if location === SkillLocation.Project then location.toString.toLowerCase.blue
+          else location.toString.toLowerCase.yellow
+        println(s"  - ${skillName.bold} ($locationColor, ${agent.toString.cyan.bold}): ${pathLabel.dim}")
     }
     println()
     aiskills.cli.SigintHandler.install()
@@ -230,11 +231,12 @@ object Remove {
     val found    = List.newBuilder[(Agent, SkillLocation)]
     val notFound = List.newBuilder[(Agent, SkillLocation)]
 
-    for (agent, location) <- targets do {
-      val skillDir = Dirs.getSkillsDir(agent, location) / skillName
-      if os.exists(skillDir / "SKILL.md")
-      then found += agent    -> location
-      else notFound += agent -> location
+    targets.foreach {
+      case (agent, location) =>
+        val skillDir = Dirs.getSkillsDir(agent, location) / skillName
+        if os.exists(skillDir / "SKILL.md")
+        then found += agent    -> location
+        else notFound += agent -> location
     }
 
     val foundResult    = found.result()
@@ -260,26 +262,28 @@ object Remove {
       }
 
     if confirmed then {
-      for (agent, location) <- foundResult do {
-        val skillDir  = Dirs.getSkillsDir(agent, location) / skillName
-        os.remove.all(skillDir)
-        val pathLabel = Dirs.displaySkillsDir(agent, location)
-        println(
-          s"\u2705 Removed: $skillName (${location.toString.toLowerCase}, ${agent.toString}): $pathLabel".green
-        )
+      foundResult.foreach {
+        case (agent, location) =>
+          val skillDir  = Dirs.getSkillsDir(agent, location) / skillName
+          os.remove.all(skillDir)
+          val pathLabel = Dirs.displaySkillsDir(agent, location)
+          println(
+            s"\u2705 Removed: $skillName (${location.toString.toLowerCase}, ${agent.toString}): $pathLabel".green
+          )
       }
 
       val agentLocationPairs = foundResult.distinct
-      for (agent, location) <- agentLocationPairs do AgentsMd.updateAgentsMdForAgent(agent, location)
+      agentLocationPairs.foreach { case (agent, location) => AgentsMd.updateAgentsMdForAgent(agent, location) }
 
       if notFoundResult.nonEmpty then {
-        for (agent, location) <- notFoundResult do {
-          val pathLabel = Dirs.displaySkillsDir(agent, location)
-          System
-            .err
-            .println(
-              s"Warning: Skill '$skillName' not found in ${location.toString.toLowerCase}/${agent.toString}: $pathLabel"
-            )
+        notFoundResult.foreach {
+          case (agent, location) =>
+            val pathLabel = Dirs.displaySkillsDir(agent, location)
+            System
+              .err
+              .println(
+                s"Warning: Skill '$skillName' not found in ${location.toString.toLowerCase}/${agent.toString}: $pathLabel"
+              )
         }
       } else ()
     } else println("Cancelled.".yellow)

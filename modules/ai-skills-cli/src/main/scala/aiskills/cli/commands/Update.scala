@@ -107,62 +107,64 @@ object Update {
           try {
             groupedByRepo.iterator.zipWithIndex.foreach {
               case ((_, groupSkills), idx) =>
-                val (firstSkill, firstMeta) = groupSkills.head
-                val cloneUrl                = firstMeta.repoUrl.getOrElse(firstSkill.name)
-                val repoSubDir              = parentTempDir / s"repo-$idx"
-                os.makeDir.all(repoSubDir)
-                val skillNames              = groupSkills.map { case (skill, _) => skill.name }
-                val skillsLabel             = if skillNames.length > 1 then s" (${skillNames.length} skills)" else ""
+                groupSkills.headOption.foreach {
+                  case (firstSkill, firstMeta) =>
+                    val cloneUrl    = firstMeta.repoUrl.getOrElse(firstSkill.name)
+                    val repoSubDir  = parentTempDir / s"repo-$idx"
+                    os.makeDir.all(repoSubDir)
+                    val skillNames  = groupSkills.map { case (skill, _) => skill.name }
+                    val skillsLabel = if skillNames.length > 1 then s" (${skillNames.length} skills)" else ""
 
-                val spinner = Spinner.createDefaultSideEffect(
-                  SpinnerConfig
-                    .default
-                    .withText(s"Cloning $cloneUrl$skillsLabel...")
-                    .withColor(Color.cyan)
-                    .withIndent(2),
-                )
-                val _       = spinner.start()
+                    val spinner = Spinner.createDefaultSideEffect(
+                      SpinnerConfig
+                        .default
+                        .withText(s"Cloning $cloneUrl$skillsLabel...")
+                        .withColor(Color.cyan)
+                        .withIndent(2),
+                    )
+                    val _       = spinner.start()
 
-                Try {
-                  Install.cloneWithFallback(cloneUrl, (repoSubDir / "repo").toString)
-                } match {
-                  case Failure(ex) =>
-                    val _   = spinner.fail(Some(s"Clone failed: $cloneUrl"))
-                    val msg = ex.getMessage
-                    if msg.nonEmpty then println(msg.dim) else ()
-                    groupSkills.foreach {
-                      case (skill, _) =>
-                        println(s"Skipped: ${skill.name} (git clone failed)".yellow)
-                        cloneFailures += skill.name
-                    }
+                    Try {
+                      Install.cloneWithFallback(cloneUrl, (repoSubDir / "repo").toString)
+                    } match {
+                      case Failure(ex) =>
+                        val _   = spinner.fail(Some(s"Clone failed: $cloneUrl"))
+                        val msg = ex.getMessage
+                        if msg.nonEmpty then println(msg.dim) else ()
+                        groupSkills.foreach {
+                          case (skill, _) =>
+                            println(s"Skipped: ${skill.name} (git clone failed)".yellow)
+                            cloneFailures += skill.name
+                        }
 
-                  case Success(actualUrl) =>
-                    val _       = spinner.succeed(Some(s"Cloned: $cloneUrl$skillsLabel"))
-                    val repoDir = repoSubDir / "repo"
+                      case Success(actualUrl) =>
+                        val _       = spinner.succeed(Some(s"Cloned: $cloneUrl$skillsLabel"))
+                        val repoDir = repoSubDir / "repo"
 
-                    groupSkills.foreach {
-                      case (skill, meta) =>
-                        val originalRepoUrl = meta.repoUrl.getOrElse("")
-                        val subpath         = meta.subpath.filter(s => s.nonEmpty && s =!= ".")
-                        val sourceDir       = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
+                        groupSkills.foreach {
+                          case (skill, meta) =>
+                            val originalRepoUrl = meta.repoUrl.getOrElse("")
+                            val subpath         = meta.subpath.filter(s => s.nonEmpty && s =!= ".")
+                            val sourceDir       = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
 
-                        if !os.exists(sourceDir / "SKILL.md") then {
-                          println(
-                            s"Skipped: ${skill.name} (SKILL.md not found in repo at ${subpath.getOrElse(".")})".yellow
-                          )
-                          missingRepoSkillFile += skill.name -> subpath.getOrElse(".")
-                        } else {
-                          updateSkillFromDir(skill.path, sourceDir)
-                          val updatedMeta =
-                            if actualUrl =!= originalRepoUrl
-                            then meta.copy(repoUrl = actualUrl.some, installedAt = aiskills.core.utils.isoNow())
-                            else meta.copy(installedAt = aiskills.core.utils.isoNow())
-                          SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
-                          reapplyRename(skill.path, updatedMeta)
-                          val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)
-                          println(
-                            s"\u2705 Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
-                          )
+                            if !os.exists(sourceDir / "SKILL.md") then {
+                              println(
+                                s"Skipped: ${skill.name} (SKILL.md not found in repo at ${subpath.getOrElse(".")})".yellow
+                              )
+                              missingRepoSkillFile += skill.name -> subpath.getOrElse(".")
+                            } else {
+                              updateSkillFromDir(skill.path, sourceDir)
+                              val updatedMeta =
+                                if actualUrl =!= originalRepoUrl
+                                then meta.copy(repoUrl = actualUrl.some, installedAt = aiskills.core.utils.isoNow())
+                                else meta.copy(installedAt = aiskills.core.utils.isoNow())
+                              SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
+                              reapplyRename(skill.path, updatedMeta)
+                              val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)
+                              println(
+                                s"\u2705 Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
+                              )
+                            }
                         }
                     }
                 }

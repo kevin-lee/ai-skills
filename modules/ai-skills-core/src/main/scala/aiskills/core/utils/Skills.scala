@@ -13,29 +13,29 @@ object Skills {
 
   /** Find all installed skills across all agent directories. No deduplication. */
   def findAllSkills(): List[Skill] = {
-    val dirs   = Dirs.getSearchDirs()
-    val skills = List.newBuilder[Skill]
+    val dirs = Dirs.getSearchDirs()
 
-    for {
-      (dir, agent, location) <- dirs
-      if os.exists(dir)
-      entry                  <- os.list(dir)
-      if isDirectoryOrSymlinkToDirectory(entry)
-      name      = entry.last
-      skillPath = entry / "SKILL.md"
-      if os.exists(skillPath)
-    } do {
-      val content = os.read(skillPath)
-      skills += Skill(
-        name = name,
-        description = Yaml.extractYamlField(content, "description"),
-        location = location,
-        agent = agent,
-        path = entry,
-      )
-    }
+    val skills =
+      for {
+        (dir, agent, location) <- dirs
+        if os.exists(dir)
+        entry                  <- os.list(dir).toList
+        if isDirectoryOrSymlinkToDirectory(entry)
+        name      = entry.last
+        skillPath = entry / "SKILL.md"
+        if os.exists(skillPath)
+      } yield {
+        val content = os.read(skillPath)
+        Skill(
+          name = name,
+          description = Yaml.extractYamlField(content, "description"),
+          location = location,
+          agent = agent,
+          path = entry,
+        )
+      }
 
-    skills.result()
+    skills
   }
 
   /** Find a specific skill by name. Returns the first match in priority order. */

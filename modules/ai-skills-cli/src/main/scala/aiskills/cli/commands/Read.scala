@@ -27,7 +27,7 @@ object Read {
       val resolved = List.newBuilder[(String, SkillLocationInfo)]
       val missing  = List.newBuilder[String]
 
-      for name <- names do {
+      names.foreach { name =>
         val found = for {
           agent    <- agents
           location <- locations
@@ -65,16 +65,17 @@ object Read {
       } else ()
 
       val resolvedList = resolved.result()
-      for ((name, skill), idx) <- resolvedList.zipWithIndex do {
-        if idx > 0 then println(separator)
-        val content = os.read(skill.path)
-        println(SkillDisplay.padLabel("Reading:").bold + s" ${name.blue.bold}")
-        SkillDisplay.renderInfoBlock(skill.baseDir)
+      resolvedList.zipWithIndex.foreach {
+        case ((name, skill), idx) =>
+          if idx > 0 then println(separator)
+          val content = os.read(skill.path)
+          println(SkillDisplay.padLabel("Reading:").bold + s" ${name.blue.bold}")
+          SkillDisplay.renderInfoBlock(skill.baseDir)
 
-        println()
-        println(content)
-        println()
-        println("Skill read:".bold + s" ${name.blue.bold}")
+          println()
+          println(content)
+          println()
+          println("Skill read:".bold + s" ${name.blue.bold}")
       }
     }
   }
@@ -130,16 +131,17 @@ object Read {
                       case Right(selectedSkills) =>
                         if selectedSkills.isEmpty then println("No skills selected.".yellow)
                         else {
-                          for (skill, idx) <- selectedSkills.zipWithIndex do {
-                            if idx > 0 then println(separator)
-                            val skillPath = skill.path / "SKILL.md"
-                            val content   = os.read(skillPath)
-                            println(SkillDisplay.padLabel("Reading:").bold + s" ${skill.name.blue.bold}")
-                            SkillDisplay.renderInfoBlock(skill.path)
-                            println()
-                            println(content)
-                            println()
-                            println("Skill read:".bold + s" ${skill.name.blue.bold}")
+                          selectedSkills.zipWithIndex.foreach {
+                            case (skill, idx) =>
+                              if idx > 0 then println(separator)
+                              val skillPath = skill.path / "SKILL.md"
+                              val content   = os.read(skillPath)
+                              println(SkillDisplay.padLabel("Reading:").bold + s" ${skill.name.blue.bold}")
+                              SkillDisplay.renderInfoBlock(skill.path)
+                              println()
+                              println(content)
+                              println()
+                              println("Skill read:".bold + s" ${skill.name.blue.bold}")
                           }
                         }
                     }

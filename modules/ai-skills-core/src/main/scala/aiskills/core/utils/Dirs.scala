@@ -1,6 +1,7 @@
 package aiskills.core.utils
 
-import aiskills.core.{Agent, SkillLocation}
+import aiskills.core.{Agent, SkillLocation, given}
+import cats.syntax.all.*
 
 object Dirs {
 
@@ -49,7 +50,7 @@ object Dirs {
     val globalSpecific  =
       agentsSorted.map(a => (os.home / os.RelPath(a.globalDirName) / "skills", a, SkillLocation.Global))
 
-    if pwd == os.home then globalUniversal ++ globalSpecific
+    if pwd === os.home then globalUniversal ++ globalSpecific
     else {
       val projectUniversal = List(
         (pwd / os.RelPath(Agent.Universal.projectDirName) / "skills", Agent.Universal, SkillLocation.Project)
