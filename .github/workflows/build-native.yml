@@ -26,6 +26,7 @@ jobs:
         os:
           - { name: "macOS 26 Apple Silicon", value: "macOS-26",         bin-suffix: "-macos-26-arm64" }
           - { name: "macOS 15 Apple Silicon", value: "macos-15",         bin-suffix: "-macos-15-arm64" }
+          - { name: "macOS 15 Intel",         value: "macos-15-intel",   bin-suffix: "-macos-15-intel" }
           - { name: "Ubuntu ARM64",           value: "ubuntu-24.04-arm", bin-suffix: "-linux-arm64" }
           - { name: "Ubuntu Latest (x86_64)", value: "ubuntu-latest",    bin-suffix: "-linux-x86_64" }
 
