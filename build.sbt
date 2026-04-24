@@ -91,7 +91,7 @@ lazy val props = new {
 
   val DeclineVersion = "2.6.1"
 
-  val Cue4sVersion = "0.0.11"
+  val Cue4sVersion = "0.0.12"
 
   val ExtrasVersion = "0.51.0"
 
