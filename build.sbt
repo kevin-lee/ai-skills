@@ -155,6 +155,17 @@ def module(projectName: String): Project = {
     .enablePlugins(ScalaNativePlugin)
     .settings(commonSettings)
     .settings(
+      dependencyOverrides ++= {
+        import just.semver.SemVer
+        libraryDependencies.value.collect {
+          case dep
+              if dep.organization == "org.scala-native" &&
+                SemVer.parse(dep.revision).exists(_ >= SemVer.parseUnsafe("0.5.0")) =>
+            dep
+        }
+      }
+    )
+    .settings(
       licenses := props.licenses,
     )
 }
