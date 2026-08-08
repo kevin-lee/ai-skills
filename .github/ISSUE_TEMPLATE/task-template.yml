@@ -31,7 +31,7 @@ body:
     attributes:
       label: Version
       description: Please provide the `ai-skills` version (if applicable)
-      placeholder: `0.1.0`
+      placeholder: 0.1.0
     validations:
       required: true
 
