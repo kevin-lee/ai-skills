@@ -54,9 +54,10 @@ object Read {
           agent    <- agents
           location <- locations
         } do {
-          val dir   = Dirs.getSkillsDir(agent, location)
-          val scope = location.toString.toLowerCase
-          val label = Dirs.displayPath(dir)
+          val dir          = Dirs.getSkillsDir(agent, location)
+          val scope        = location.toString.toLowerCase
+          val envVarSuffix = Dirs.envVarAnnotationFor(dir).fold("")(varName => s" (from $$$varName)")
+          val label        = Dirs.displayPath(dir) + envVarSuffix
           System.err.println(s"  $label ($scope, ${agent.toString})")
         }
         System.err.println()

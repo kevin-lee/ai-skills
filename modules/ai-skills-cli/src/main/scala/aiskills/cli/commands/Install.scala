@@ -2,7 +2,7 @@ package aiskills.cli.commands
 
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{AgentsMd, MarketplaceSkills, SkillMdFinder, SkillMetadata, Yaml}
+import aiskills.core.utils.{AgentsMd, Dirs, MarketplaceSkills, SkillMdFinder, SkillMetadata, Yaml}
 import aiskills.core.{*, given}
 import cats.syntax.all.*
 import cue4s.*
@@ -163,7 +163,7 @@ object Install {
 
   private def promptForLocation(agents: List[Agent]): Set[SkillLocation] = {
     val projectPaths   = agents.map(_.projectDirName).distinct.mkString(", ")
-    val globalPaths    = agents.map(a => s"~/${a.globalDirName}").distinct.mkString(", ")
+    val globalPaths    = agents.map(a => Dirs.displayGlobalBaseResolved(a)).distinct.mkString(", ")
     val locationLabels = List(
       s"global  ($globalPaths)",
       s"project ($projectPaths)",
@@ -206,16 +206,12 @@ object Install {
         agent    <- agents
         location <- locations
       } do {
-        val isProject    = location === SkillLocation.Project
-        val folder       = s"${agent.projectDirName}/skills"
-        val globalFolder = s"${agent.globalDirName}/skills"
-        val targetDir    =
-          if isProject then os.pwd / os.RelPath(folder)
-          else os.home / os.RelPath(globalFolder)
+        val isProject = location === SkillLocation.Project
+        val targetDir = Dirs.getSkillsDir(agent, location)
 
         val locationDisplay =
-          if isProject then s"project ($folder)".blue
-          else s"global (~/$globalFolder)".dim
+          if isProject then s"project (${Dirs.displaySkillsDir(agent, location)})".blue
+          else s"global (${Dirs.displaySkillsDir(agent, location)})".dim
 
         if agents.length > 1 || locations.size > 1
         then println(s"\n--- ${agent.toString} (${location.toString.toLowerCase}) ---".bold)
@@ -225,7 +221,7 @@ object Install {
         println(s"Location: $locationDisplay")
         if agents.length <= 1 && locations.size <= 1 then {
           if !isProject && os.pwd =!= os.home then println(
-            s"Global install selected (~/$globalFolder). Omit --global for ./$folder.".dim
+            s"Global install selected (${Dirs.displaySkillsDir(agent, SkillLocation.Global)}). Omit --global for ./${Dirs.displaySkillsDir(agent, SkillLocation.Project)}.".dim
           )
           else ()
         } else ()
@@ -233,7 +229,7 @@ object Install {
 
         resolvedSource match {
           case ResolvedSource.Local(localPath, sourceInfo) =>
-            installFromLocal(localPath, targetDir, options, sourceInfo)
+            installFromLocal(localPath, targetDir, isProject, options, sourceInfo)
 
           case ResolvedSource.Git(repoDir, repoUrl, skillSubpath, sourceInfo) =>
             if skillSubpath.nonEmpty then installSpecificSkill(
@@ -246,7 +242,7 @@ object Install {
             )
             else {
               val repoName = getRepoName(repoUrl)
-              installFromRepo(repoDir, targetDir, options, repoName, sourceInfo)
+              installFromRepo(repoDir, targetDir, isProject, options, repoName, sourceInfo)
             }
         }
 
@@ -350,6 +346,10 @@ object Install {
     }
   }
 
+  /** Display an installed skill path, annotated with the env var it came from (if any). */
+  private def displayInstallLocation(path: os.Path): String =
+    Dirs.displayPath(path) + Dirs.envVarAnnotationFor(path).fold("")(varName => s" (from $$$varName)")
+
   private def printPostInstallHints(locations: Set[SkillLocation]): Unit = {
     println(s"\n${"Read skill:".dim} ${"aiskills read <skill-name>".cyan}")
     if locations.contains(SkillLocation.Project) then println(
@@ -361,6 +361,7 @@ object Install {
   private def installFromLocal(
     localPath: os.Path,
     targetDir: os.Path,
+    isProject: Boolean,
     options: InstallOptions,
     sourceInfo: InstallSourceInfo,
   ): Unit = {
@@ -372,11 +373,8 @@ object Install {
       throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
     } else {
       val skillMdPath = localPath / "SKILL.md"
-      if os.exists(skillMdPath) then {
-        val isProject = targetDir.startsWith(os.pwd)
-        installSingleLocalSkill(localPath, targetDir, isProject, options, sourceInfo)
-      } else
-        installFromRepo(localPath, targetDir, options, none[String], sourceInfo)
+      if os.exists(skillMdPath) then installSingleLocalSkill(localPath, targetDir, isProject, options, sourceInfo)
+      else installFromRepo(localPath, targetDir, isProject, options, none[String], sourceInfo)
     }
   }
 
@@ -411,13 +409,13 @@ object Install {
             SkillMetadata.writeSkillMetadata(targetPath, buildLocalMetadata(sourceInfo, skillDir))
 
             println(s"\u2705 Installed: $skillName".green)
-            println(s"   Location: $targetPath")
+            println(s"   Location: ${displayInstallLocation(targetPath)}")
           }
 
         case ConflictResolution.Rename(newName) =>
           installSkillWithRename(skillDir, targetDir, newName, buildLocalMetadata(sourceInfo, skillDir))
           println(s"\u2705 Installed: $skillName as $newName".green)
-          println(s"   Location: ${targetDir / newName}")
+          println(s"   Location: ${displayInstallLocation(targetDir / newName)}")
       }
     }
   }
@@ -459,13 +457,13 @@ object Install {
               SkillMetadata.writeSkillMetadata(targetPath, buildGitMetadata(sourceInfo, skillSubpath))
 
               println(s"\u2705 Installed: $skillName".green)
-              println(s"   Location: $targetPath")
+              println(s"   Location: ${displayInstallLocation(targetPath)}")
             }
 
           case ConflictResolution.Rename(newName) =>
             installSkillWithRename(skillDir, targetDir, newName, buildGitMetadata(sourceInfo, skillSubpath))
             println(s"\u2705 Installed: $skillName as $newName".green)
-            println(s"   Location: ${targetDir / newName}")
+            println(s"   Location: ${displayInstallLocation(targetDir / newName)}")
         }
       }
     }
@@ -474,6 +472,7 @@ object Install {
   private def installFromRepo(
     repoDir: os.Path,
     targetDir: os.Path,
+    isProject: Boolean,
     options: InstallOptions,
     repoName: Option[String],
     sourceInfo: InstallSourceInfo,
@@ -577,8 +576,6 @@ object Install {
         skillInfos
 
     if skillsToInstall.nonEmpty then {
-      val isProject = targetDir.startsWith(os.pwd)
-
       val (installedCount, _) =
         skillsToInstall.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
           case ((count, bulk), info) =>

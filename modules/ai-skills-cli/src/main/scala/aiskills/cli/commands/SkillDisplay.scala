@@ -23,7 +23,8 @@ object SkillDisplay {
 
   def renderInfoBlock(skillPath: os.Path): Unit = {
     val baseDirDisplay = Dirs.displayPath(skillPath)
-    println(s"${padLabel(BaseDirLabel).bold} ${baseDirDisplay.yellow.bold}")
+    val envVarSuffix   = Dirs.envVarAnnotationFor(skillPath).fold("")(varName => s" (from $$$varName)".dim)
+    println(s"${padLabel(BaseDirLabel).bold} ${baseDirDisplay.yellow.bold}$envVarSuffix")
 
     val metadataOpt = SkillMetadata.readSkillMetadata(skillPath)
 
