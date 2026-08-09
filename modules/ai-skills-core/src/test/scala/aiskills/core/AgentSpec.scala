@@ -21,6 +21,7 @@ object AgentSpec extends Properties {
     example("needsAgentsMd: true for Universal and Codex", testNeedsAgentsMd),
     example("needsAgentsMd: false for Claude, Cursor, Gemini, Windsurf, Copilot", testDoesNotNeedAgentsMd),
     example("Encoder/Decoder: round-trip", testEncoderDecoderRoundTrip),
+    example("globalDirOverride: expected env var mapping per agent", testGlobalDirOverrideMapping),
   )
 
   private def testFromStringLowercase: Result =
@@ -119,5 +120,18 @@ object AgentSpec extends Properties {
         val decoded = json.as[Agent]
         decoded ==== Right(agent)
       }
+    )
+
+  private def testGlobalDirOverrideMapping: Result =
+    Result.all(
+      List(
+        Agent.Universal.globalDirOverride ==== GlobalDirOverride.NoOverride,
+        Agent.Claude.globalDirOverride ==== GlobalDirOverride.ConfigDir("CLAUDE_CONFIG_DIR"),
+        Agent.Cursor.globalDirOverride ==== GlobalDirOverride.NoOverride,
+        Agent.Codex.globalDirOverride ==== GlobalDirOverride.ConfigDir("CODEX_HOME"),
+        Agent.Gemini.globalDirOverride ==== GlobalDirOverride.HomeRoot("GEMINI_CLI_HOME"),
+        Agent.Windsurf.globalDirOverride ==== GlobalDirOverride.NoOverride,
+        Agent.Copilot.globalDirOverride ==== GlobalDirOverride.ConfigDir("COPILOT_HOME"),
+      )
     )
 }

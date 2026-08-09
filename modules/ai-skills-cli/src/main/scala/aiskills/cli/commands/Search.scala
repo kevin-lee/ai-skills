@@ -393,13 +393,7 @@ object Search {
   ): (Boolean, OverwritePrompt.BulkDecision) = {
     import OverwritePrompt.{BulkDecision, OverwriteChoice}
 
-    val isProject = location === SkillLocation.Project
-    val folder    =
-      if isProject then s"${agent.projectDirName}/skills"
-      else s"${agent.globalDirName}/skills"
-    val targetDir =
-      if isProject then os.pwd / os.RelPath(folder)
-      else os.home / os.RelPath(folder)
+    val targetDir = Dirs.getSkillsDir(agent, location)
 
     val skillName     = installName
     val subpath       = metadata.subpath.getOrElse("")
@@ -521,7 +515,7 @@ object Search {
 
   private def promptForInstallLocation(agents: List[Agent]): Either[Int, Set[SkillLocation]] = {
     val projectPaths   = agents.map(_.projectDirName).distinct.mkString(", ")
-    val globalPaths    = agents.map(a => s"~/${a.globalDirName}").distinct.mkString(", ")
+    val globalPaths    = agents.map(a => Dirs.displayGlobalBaseResolved(a)).distinct.mkString(", ")
     val locationLabels = List(
       s"global  ($globalPaths)",
       s"project ($projectPaths)",

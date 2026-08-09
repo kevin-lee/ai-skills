@@ -3,7 +3,7 @@
 
 <p align="center">
 
-  <img src="https://ai-skills.kevinly.dev/img/ai-skills-all.svg"/>
+  <img src="https://ai-skills.kevinly.dev/img/ai-skills-all.svg" alt="ai-skills logo" width="200" />
 
 </p>
 
@@ -33,6 +33,24 @@ Built with Scala 3 and Scala Native — compiles to a standalone binary with no 
 | **Gemini**    | `.gemini/skills/`   | `~/.gemini/skills/`           |
 | **Windsurf**  | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` |
 | **Copilot**   | `.github/skills/`   | `~/.copilot/skills/`          |
+
+### Custom Global Config Locations
+
+`aiskills` honors each agent's own environment variable for relocating its global config directory. When the variable is set, global install, list, read, search, sync, update, and remove all use the relocated directory, and the CLI shows the path as coming from the variable (e.g. `$CLAUDE_CONFIG_DIR/skills`).
+
+| Agent       | Env Var             | Global Skills Dir when set         |
+|-------------|---------------------|------------------------------------|
+| **Claude**  | `CLAUDE_CONFIG_DIR` | `$CLAUDE_CONFIG_DIR/skills/`       |
+| **Codex**   | `CODEX_HOME`        | `$CODEX_HOME/skills/`              |
+| **Gemini**  | `GEMINI_CLI_HOME`   | `$GEMINI_CLI_HOME/.gemini/skills/` |
+| **Copilot** | `COPILOT_HOME`      | `$COPILOT_HOME/skills/`            |
+
+Notes:
+- **Universal** (`~/.agents`) has no standard env var across agents, so it always stays under `$HOME`.
+- **Cursor**: `CURSOR_CONFIG_DIR` is only documented for the CLI's `cli-config.json`, not for skills, so it is not honored.
+- **Windsurf** has no documented mechanism to relocate `~/.codeium/windsurf`.
+- Project-level directories are never relocated — no agent supports a custom project dir location.
+- Empty variable values are ignored. A leading `~` expands to your home directory; relative paths resolve against the current directory.
 
 ## Install
 

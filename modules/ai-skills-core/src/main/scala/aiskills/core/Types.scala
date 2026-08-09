@@ -8,14 +8,38 @@ import io.circe.{Codec, Decoder, Encoder}
 given Eq[os.Path]   = Eq.fromUniversalEquals
 given Show[os.Path] = Show.fromToString
 
-enum Agent(val projectDirName: String, val globalDirName: String) derives Eq, Show {
-  case Universal extends Agent(".agents", ".agents")
-  case Claude extends Agent(".claude", ".claude")
-  case Cursor extends Agent(".cursor", ".cursor")
-  case Codex extends Agent(".codex", ".codex")
-  case Gemini extends Agent(".gemini", ".gemini")
-  case Windsurf extends Agent(".windsurf", ".codeium/windsurf")
-  case Copilot extends Agent(".github", ".copilot")
+/** How an agent's global config dir can be relocated via its own env var.
+  *   - ConfigDir: the env var value is the config dir itself; skills live at `<value>/skills`.
+  *   - HomeRoot: the env var value replaces the home root; skills live at `<value>/<globalDirName>/skills`.
+  */
+enum GlobalDirOverride derives Eq, Show {
+  case ConfigDir(envVarName: String)
+  case HomeRoot(envVarName: String)
+  case NoOverride
+}
+
+/** Resolved global config base dir (without the `skills` segment).
+  * `envVar` is Some(varName) only when an override was actually applied.
+  */
+final case class GlobalDirResolution(
+  configBase: os.Path,
+  envVar: Option[String],
+) derives Eq,
+      Show
+
+enum Agent(
+  val projectDirName: String,
+  val globalDirName: String,
+  val globalDirOverride: GlobalDirOverride,
+) derives Eq,
+      Show {
+  case Universal extends Agent(".agents", ".agents", GlobalDirOverride.NoOverride)
+  case Claude extends Agent(".claude", ".claude", GlobalDirOverride.ConfigDir("CLAUDE_CONFIG_DIR"))
+  case Cursor extends Agent(".cursor", ".cursor", GlobalDirOverride.NoOverride)
+  case Codex extends Agent(".codex", ".codex", GlobalDirOverride.ConfigDir("CODEX_HOME"))
+  case Gemini extends Agent(".gemini", ".gemini", GlobalDirOverride.HomeRoot("GEMINI_CLI_HOME"))
+  case Windsurf extends Agent(".windsurf", ".codeium/windsurf", GlobalDirOverride.NoOverride)
+  case Copilot extends Agent(".github", ".copilot", GlobalDirOverride.ConfigDir("COPILOT_HOME"))
 }
 object Agent {
 
