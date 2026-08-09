@@ -83,13 +83,13 @@ object Search {
     val results = MarketplaceSearch.searchAll(query)
 
     if results.isEmpty then {
-      val _ = spinner.fail(Some("No results found"))
+      val _ = spinner.fail("No results found".some)
       println(s"\nNo skills found matching '$query'.".yellow)
       println(s"Try a different search term or browse:")
       println(s"  ${"https://skills.sh".cyan}")
       println(s"  ${"https://agentskill.sh".cyan}")
     } else {
-      val _ = spinner.succeed(Some(s"Found ${results.length} skill(s)"))
+      val _ = spinner.succeed(s"Found ${results.length} skill(s)".some)
       println()
 
       promptForMarketplaceResults(results) match {
@@ -197,14 +197,14 @@ object Search {
           Install.cloneWithFallback(repoUrl, (tempDir / "repo").toString)
         } match {
           case scala.util.Failure(_) =>
-            val _ = spinner.fail(Some(s"Failed to clone $source"))
+            val _ = spinner.fail(s"Failed to clone $source".some)
             System.err.println(s"Could not clone repository: $source".red)
             aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
             aiskills.cli.TempDirCleanup.unregister(tempDir)
             Nil
 
           case scala.util.Success(actualUrl) =>
-            val _ = spinner.succeed(Some(s"Cloned $source"))
+            val _ = spinner.succeed(s"Cloned $source".some)
 
             val repoDir = tempDir / "repo"
 
@@ -852,9 +852,9 @@ object Search {
       prompts.text(
         "Enter search query",
         _.validate { s =>
-          if s.trim.length < MinQueryLength
-          then Some(PromptError(s"Query must be at least $MinQueryLength characters"))
-          else None
+          Option.when(s.trim.length < MinQueryLength)(
+            PromptError(s"Query must be at least $MinQueryLength characters")
+          )
         },
       ) match {
         case Completion.Finished(query) =>
