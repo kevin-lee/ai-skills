@@ -59,6 +59,8 @@ object InstallSpec extends Properties {
     // skillLabel
     example("skillLabel: formats label with name, subpath, and size", testSkillLabelBasic),
     example("skillLabel: formats label with long subpath", testSkillLabelLongSubpath),
+    example("skillLabel: empty subpath renders as <root>", testSkillLabelEmptySubpath),
+    example("skillLabel: whitespace-only subpath renders as <root>", testSkillLabelWhitespaceOnlySubpath),
     // skillNameWithSubpath
     example("skillNameWithSubpath: formats name with subpath", testSkillNameWithSubpath),
     example("skillNameWithSubpath: distinguishes duplicate names by subpath", testSkillNameWithSubpathDuplicates),
@@ -330,6 +332,12 @@ object InstallSpec extends Properties {
       )
     )
   }
+
+  private def testSkillLabelEmptySubpath: Result =
+    Result.assert(Install.skillLabel("foo", "", 100L).contains("(<root>)"))
+
+  private def testSkillLabelWhitespaceOnlySubpath: Result =
+    Result.assert(Install.skillLabel("foo", "   ", 100L).contains("(<root>)"))
 
   // skillNameWithSubpath tests
   private def testSkillNameWithSubpath: Result = {
