@@ -101,17 +101,21 @@ object Install {
     else if bytes < 1024 * 1024 then f"${bytes / 1024.0}%.1fKB"
     else f"${bytes / (1024.0 * 1024.0)}%.1fMB"
 
-  /** Format a skill label with name, subpath, and size for display in selection lists. */
+  /** Empty or whitespace-only subpath renders as `<root>` to distinguish root-level skills. */
+  private def subpathOrRoot(subpath: String): String =
+    if subpath.trim.isEmpty then "<root>" else subpath
+
+  /** Format a skill label with name, subpath, and size for display in selection lists.
+    * Empty or whitespace-only subpath renders as `<root>` to distinguish root-level skills.
+    */
   def skillLabel(skillName: String, subpath: String, size: Long): String =
-    s"${skillName.padTo(25, ' ')} ($subpath)".padTo(60, ' ') + s" ${formatSize(size)}"
+    s"${skillName.padTo(25, ' ')} (${subpathOrRoot(subpath)})".padTo(60, ' ') + s" ${formatSize(size)}"
 
   /** Format a skill name with its subpath for display in messages.
     * Empty or whitespace-only subpath renders as `<root>` to distinguish root-level skills.
     */
-  def skillNameWithSubpath(skillName: String, subpath: String): String = {
-    val shown = if subpath.trim.isEmpty then "<root>" else subpath
-    s"$skillName ($shown)"
-  }
+  def skillNameWithSubpath(skillName: String, subpath: String): String =
+    s"$skillName (${subpathOrRoot(subpath)})"
 
   /** Read the subpath of an already-installed skill from its metadata. */
   def existingSubpathLabel(targetPath: os.Path): String =
@@ -694,7 +698,7 @@ object Install {
     if sourceInfo.sourceType === SkillSourceType.Local then buildLocalMetadata(sourceInfo, skillDir)
     else buildGitMetadata(sourceInfo, skillDir.relativeTo(repoDir).toString)
 
-  private def buildGitMetadata(sourceInfo: InstallSourceInfo, subpath: String): SkillSourceMetadata =
+  private[commands] def buildGitMetadata(sourceInfo: InstallSourceInfo, subpath: String): SkillSourceMetadata =
     SkillSourceMetadata(
       source = sourceInfo.source,
       sourceType = SkillSourceType.Git,

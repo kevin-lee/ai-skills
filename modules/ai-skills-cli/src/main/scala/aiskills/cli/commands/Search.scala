@@ -292,14 +292,13 @@ object Search {
     val skillEntries = installable.map { c =>
       val subpath     = c.skillDir.relativeTo(c.repoDir).toString
       val installName = resolveInstallName(c.skillDir, c.repoDir, c.yamlName, c.result.skillId)
-      val metadata    = SkillSourceMetadata(
+      val sourceInfo  = InstallSourceInfo(
         source = c.result.source,
         sourceType = SkillSourceType.Git,
         repoUrl = c.actualRepoUrl.some,
-        subpath = subpath.some,
-        localPath = none[String],
-        installedAt = aiskills.core.utils.isoNow(),
+        localRoot = none[os.Path],
       )
+      val metadata    = Install.buildGitMetadata(sourceInfo, subpath)
       (c.skillDir, installName, metadata)
     }
 
