@@ -297,7 +297,7 @@ object Sync {
     } else ()
     // Update .aiskills.json name field if metadata exists
     SkillMetadata.readSkillMetadata(newTargetPath).foreach { meta =>
-      SkillMetadata.writeSkillMetadata(newTargetPath, meta.copy(name = newName.some))
+      SkillMetadata.writeSkillMetadata(newTargetPath, meta.withName(newName))
     }
     println(
       s"\u2705 Synced: ${sourcePath.last} as $newName -> ${to.toString} (${targetLocation.toString.toLowerCase})".green

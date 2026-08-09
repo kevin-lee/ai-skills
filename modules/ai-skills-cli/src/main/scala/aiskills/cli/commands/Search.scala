@@ -453,7 +453,7 @@ object Search {
                       val updated = Yaml.replaceYamlField(content, "name", newName)
                       os.write.over(skillMdPath, updated)
                     } else ()
-                    SkillMetadata.writeSkillMetadata(newTargetPath, metadata.copy(name = newName.some))
+                    SkillMetadata.writeSkillMetadata(newTargetPath, metadata.withName(newName))
                     println(s"\u2705 Installed: $labeledName as $newName $locationLabel".green)
                     (true, BulkDecision.Undecided)
                 }

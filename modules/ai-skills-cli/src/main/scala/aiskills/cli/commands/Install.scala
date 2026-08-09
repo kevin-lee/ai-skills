@@ -692,11 +692,7 @@ object Install {
     repoDir: os.Path,
   ): SkillSourceMetadata =
     if sourceInfo.sourceType === SkillSourceType.Local then buildLocalMetadata(sourceInfo, skillDir)
-    else {
-      val subpath           = skillDir.relativeTo(repoDir).toString
-      val normalizedSubpath = if subpath === "." then "" else subpath
-      buildGitMetadata(sourceInfo, normalizedSubpath)
-    }
+    else buildGitMetadata(sourceInfo, skillDir.relativeTo(repoDir).toString)
 
   private def buildGitMetadata(sourceInfo: InstallSourceInfo, subpath: String): SkillSourceMetadata =
     SkillSourceMetadata(
@@ -802,7 +798,7 @@ object Install {
         val updated = Yaml.replaceYamlField(content, "name", newName)
         os.write.over(skillMdPath, updated)
       } else ()
-      SkillMetadata.writeSkillMetadata(targetPath, metadata.copy(name = newName.some))
+      SkillMetadata.writeSkillMetadata(targetPath, metadata.withName(newName))
     }
   }
 }

@@ -13,6 +13,15 @@ object SkillMetadataSpec extends Properties {
     example("reads legacy metadata without name as None", testLegacyMetadataWithoutName),
     example("returns None when metadata is missing", testMissing),
     example("returns None for invalid JSON", testInvalidJson),
+    example("normalizes \".\" subpath to None on construction", testNormalizesDotSubpathOnConstruction),
+    example(
+      "normalizes empty and whitespace-only subpath to None on construction",
+      testNormalizesEmptySubpathOnConstruction,
+    ),
+    example("preserves a real subpath on construction", testPreservesRealSubpathOnConstruction),
+    example("reads legacy \".\" subpath as None", testLegacyDotSubpath),
+    example("reads legacy empty subpath as None", testLegacyEmptySubpath),
+    example("writes root subpath as JSON null", testWritesRootSubpathAsNull),
   )
 
   private def withTempDir[A](f: os.Path => A): A = {
@@ -114,5 +123,70 @@ object SkillMetadataSpec extends Properties {
     withTempDir { tempDir =>
       os.write(tempDir / SkillMetadata.SkillMetadataFile, "{not-json")
       Result.assert(SkillMetadata.readSkillMetadata(tempDir).isEmpty)
+    }
+
+  private def metadataWithSubpath(subpath: Option[String]): SkillSourceMetadata =
+    SkillSourceMetadata(
+      source = "owner/repo",
+      sourceType = SkillSourceType.Git,
+      repoUrl = "https://github.com/owner/repo".some,
+      subpath = subpath,
+      localPath = none[String],
+      installedAt = "2026-01-01T00:00:00.000Z",
+    )
+
+  private def testNormalizesDotSubpathOnConstruction: Result =
+    metadataWithSubpath(".".some).subpath ==== none[String]
+
+  private def testNormalizesEmptySubpathOnConstruction: Result =
+    Result.all(
+      List(
+        metadataWithSubpath("".some).subpath ==== none[String],
+        metadataWithSubpath("   ".some).subpath ==== none[String],
+      )
+    )
+
+  private def testPreservesRealSubpathOnConstruction: Result =
+    metadataWithSubpath("skills/demo".some).subpath ==== "skills/demo".some
+
+  private def legacyJsonWithSubpath(subpath: String): String =
+    s"""{
+       |  "source" : "owner/repo",
+       |  "sourceType" : "git",
+       |  "repoUrl" : "https://github.com/owner/repo",
+       |  "subpath" : "$subpath",
+       |  "localPath" : null,
+       |  "installedAt" : "2026-01-01T00:00:00.000Z"
+       |}""".stripMargin
+
+  private def testLegacyDotSubpath: Result =
+    withTempDir { tempDir =>
+      // Write JSON with "." subpath literally, simulating records written by earlier versions
+      os.write(tempDir / SkillMetadata.SkillMetadataFile, legacyJsonWithSubpath("."))
+      val read = SkillMetadata.readSkillMetadata(tempDir)
+
+      read match {
+        case Some(r) => r.subpath ==== none[String]
+        case None => Result.failure.log("Expected Some but got None")
+      }
+    }
+
+  private def testLegacyEmptySubpath: Result =
+    withTempDir { tempDir =>
+      // Write JSON with "" subpath literally, simulating records written by earlier versions
+      os.write(tempDir / SkillMetadata.SkillMetadataFile, legacyJsonWithSubpath(""))
+      val read = SkillMetadata.readSkillMetadata(tempDir)
+
+      read match {
+        case Some(r) => r.subpath ==== none[String]
+        case None => Result.failure.log("Expected Some but got None")
+      }
+    }
+
+  private def testWritesRootSubpathAsNull: Result =
+    withTempDir { tempDir =>
+      SkillMetadata.writeSkillMetadata(tempDir, metadataWithSubpath(".".some))
+      val raw = os.read(tempDir / SkillMetadata.SkillMetadataFile)
+      Result.assert(raw.contains("\"subpath\" : null")).log(s"raw was: $raw")
     }
 }

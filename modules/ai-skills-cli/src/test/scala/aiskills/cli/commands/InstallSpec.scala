@@ -70,6 +70,10 @@ object InstallSpec extends Properties {
     // existingSubpathLabel
     example("existingSubpathLabel: returns subpath from metadata", testExistingSubpathLabelWithMetadata),
     example("existingSubpathLabel: returns empty when no metadata", testExistingSubpathLabelNoMetadata),
+    example(
+      "existingSubpathLabel returns empty string for legacy \".\" metadata",
+      testExistingSubpathLabelLegacyDotMetadata,
+    ),
     // selectByLabel
     example("selectByLabel: selects matching items by label", testSelectByLabelMatching),
     example("selectByLabel: returns empty when no labels selected", testSelectByLabelEmpty),
@@ -378,6 +382,24 @@ object InstallSpec extends Properties {
     val tmpDir = os.temp.dir()
     try Install.existingSubpathLabel(tmpDir) ==== ""
     finally os.remove.all(tmpDir)
+  }
+
+  private def testExistingSubpathLabelLegacyDotMetadata: Result = {
+    val tmpDir = os.temp.dir()
+    try {
+      // Write JSON with "." subpath literally, simulating records written by earlier versions
+      val legacyJson =
+        """{
+          |  "source" : "owner/repo",
+          |  "sourceType" : "git",
+          |  "repoUrl" : "https://github.com/owner/repo",
+          |  "subpath" : ".",
+          |  "localPath" : null,
+          |  "installedAt" : "2026-01-01T00:00:00Z"
+          |}""".stripMargin
+      os.write(tmpDir / SkillMetadata.SkillMetadataFile, legacyJson)
+      Install.existingSubpathLabel(tmpDir) ==== ""
+    } finally os.remove.all(tmpDir)
   }
 
   // selectByLabel tests
