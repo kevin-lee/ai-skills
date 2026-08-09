@@ -41,7 +41,7 @@ object SkillDisplay {
         if metadata.source.nonEmpty then println(s"${padLabel(SourceLabel).bold} ${metadata.source}")
         else ()
 
-        val subpathValue = metadata.subpath.filter(_.nonEmpty)
+        val subpathValue = metadata.subpath
         val isRepoSource = metadata.sourceType match {
           case SkillSourceType.Git => true
           case SkillSourceType.Local => false

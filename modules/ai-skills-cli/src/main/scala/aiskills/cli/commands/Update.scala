@@ -85,7 +85,7 @@ object Update {
                 missingLocalSkillFile += skill.name
               case Some(lp) =>
                 updateSkillFromDir(skill.path, lp)
-                val updatedMeta = meta.copy(installedAt = aiskills.core.utils.isoNow())
+                val updatedMeta = meta.withInstalledAt(aiskills.core.utils.isoNow())
                 SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
                 reapplyRename(skill.path, updatedMeta)
                 val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)
@@ -144,7 +144,7 @@ object Update {
                         groupSkills.foreach {
                           case (skill, meta) =>
                             val originalRepoUrl = meta.repoUrl.getOrElse("")
-                            val subpath         = meta.subpath.filter(s => s.nonEmpty && s =!= ".")
+                            val subpath         = meta.subpath
                             val sourceDir       = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
 
                             if !os.exists(sourceDir / "SKILL.md") then {
@@ -156,8 +156,8 @@ object Update {
                               updateSkillFromDir(skill.path, sourceDir)
                               val updatedMeta =
                                 if actualUrl =!= originalRepoUrl
-                                then meta.copy(repoUrl = actualUrl.some, installedAt = aiskills.core.utils.isoNow())
-                                else meta.copy(installedAt = aiskills.core.utils.isoNow())
+                                then meta.withRepoUrl(actualUrl.some).withInstalledAt(aiskills.core.utils.isoNow())
+                                else meta.withInstalledAt(aiskills.core.utils.isoNow())
                               SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
                               reapplyRename(skill.path, updatedMeta)
                               val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)

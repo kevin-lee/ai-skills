@@ -25,7 +25,7 @@ object SkillMetadata {
   def writeSkillMetadata(skillDir: os.Path, metadata: SkillSourceMetadata): Unit = {
     val metadataPath = skillDir / SkillMetadataFile
     val payload      =
-      if metadata.installedAt.isEmpty then metadata.copy(installedAt = isoNow())
+      if metadata.installedAt.isEmpty then metadata.withInstalledAt(isoNow())
       else
         metadata
     os.write.over(metadataPath, payload.asJson.spaces2)

@@ -149,17 +149,72 @@ object SkillSourceType {
   }
 }
 
-final case class SkillSourceMetadata(
-  name: Option[String] = none, // For backward compat: existing .aiskills.json without name
+final case class SkillSourceMetadata private (
+  name: Option[String], // For backward compat: existing .aiskills.json without name
   source: String,
   sourceType: SkillSourceType,
   repoUrl: Option[String],
-  subpath: Option[String],
+  subpath: Option[String], // Canonical: None means the skill is at the repo root
   localPath: Option[String],
   installedAt: String,
 ) derives Eq,
-      Show,
-      Codec.AsObject
+      Show
+object SkillSourceMetadata {
+
+  extension (skillSourceMetadata: SkillSourceMetadata) {
+
+    def withName(newName: String): SkillSourceMetadata = skillSourceMetadata.copy(name = newName.some)
+
+    def withInstalledAt(at: String): SkillSourceMetadata = skillSourceMetadata.copy(installedAt = at)
+
+    def withRepoUrl(url: Option[String]): SkillSourceMetadata = skillSourceMetadata.copy(repoUrl = url)
+  }
+
+  /** Canonicalize the repo-root subpath. `""`, `"."`, and whitespace-only all mean "repo root",
+    * which is represented as `None`.
+    */
+  def normalizeSubpath(subpath: Option[String]): Option[String] =
+    subpath.map(_.trim).filter(s => s.nonEmpty && s =!= ".")
+
+  def apply(
+    name: Option[String] = none[String], // scalafix:ok DisableSyntax.defaultArgs
+    source: String,
+    sourceType: SkillSourceType,
+    repoUrl: Option[String],
+    subpath: Option[String],
+    localPath: Option[String],
+    installedAt: String,
+  ): SkillSourceMetadata =
+    new SkillSourceMetadata(
+      name,
+      source,
+      sourceType,
+      repoUrl,
+      normalizeSubpath(subpath),
+      localPath,
+      installedAt,
+    )
+
+  private val derivedCodec: Codec.AsObject[SkillSourceMetadata] = Codec.AsObject.derived
+
+  given Codec.AsObject[SkillSourceMetadata] =
+    Codec
+      .AsObject
+      .from(
+        derivedCodec.map(m =>
+          SkillSourceMetadata(
+            m.name,
+            m.source,
+            m.sourceType,
+            m.repoUrl,
+            m.subpath,
+            m.localPath,
+            m.installedAt,
+          )
+        ),
+        derivedCodec,
+      )
+}
 
 enum AiSkillsError derives Eq, Show {
   case SkillNotFound(name: String) extends AiSkillsError
