@@ -128,7 +128,7 @@ object Update {
                       Install.cloneWithFallback(cloneUrl, (repoSubDir / "repo").toString)
                     } match {
                       case Failure(ex) =>
-                        val _   = spinner.fail(Some(s"Clone failed: $cloneUrl"))
+                        val _   = spinner.fail(s"Clone failed: $cloneUrl".some)
                         val msg = ex.getMessage
                         if msg.nonEmpty then println(msg.dim) else ()
                         groupSkills.foreach {
@@ -138,7 +138,7 @@ object Update {
                         }
 
                       case Success(actualUrl) =>
-                        val _       = spinner.succeed(Some(s"Cloned: $cloneUrl$skillsLabel"))
+                        val _       = spinner.succeed(s"Cloned: $cloneUrl$skillsLabel".some)
                         val repoDir = repoSubDir / "repo"
 
                         groupSkills.foreach {

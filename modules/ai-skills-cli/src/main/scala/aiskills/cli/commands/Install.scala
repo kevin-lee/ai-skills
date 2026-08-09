@@ -327,7 +327,7 @@ object Install {
           cloneWithFallback(repoUrl, (tempDir / "repo").toString)
         } match {
           case Failure(ex) =>
-            val _   = spinner.fail(Some("Clone failed"))
+            val _   = spinner.fail("Clone failed".some)
             val msg = ex.getMessage
             if msg.nonEmpty then println(msg.dim) else ()
             println("\nTip: For private repos, ensure git SSH keys or credentials are configured".yellow)
@@ -335,7 +335,7 @@ object Install {
             aiskills.cli.TempDirCleanup.unregister(tempDir)
             throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
           case Success(url) =>
-            val _ = spinner.succeed(Some("Repository cloned"))
+            val _ = spinner.succeed("Repository cloned".some)
             url
         }
 
