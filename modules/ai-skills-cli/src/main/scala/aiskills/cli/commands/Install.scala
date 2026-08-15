@@ -7,9 +7,6 @@ import aiskills.core.{*, given}
 import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
-import just.spinner.*
-
-import scala.util.{Failure, Success, Try}
 
 object Install {
 
@@ -28,44 +25,6 @@ object Install {
       source.startsWith("http://") ||
       source.startsWith("https://") ||
       source.endsWith(".git")
-
-  /** Check if the URL is a GitHub HTTPS URL. */
-  def isGitHubHttpsUrl(url: String): Boolean =
-    url.startsWith("https://github.com/")
-
-  /** Convert a GitHub HTTPS URL to the equivalent SSH URL. */
-  def gitHubHttpsToSsh(url: String): String = {
-    val path = url.stripPrefix("https://github.com/").stripSuffix("/").stripSuffix(".git")
-    s"git@github.com:$path.git"
-  }
-
-  /** Clone a repo, falling back to SSH if the HTTPS GitHub URL fails.
-    *
-    * The HTTPS attempt uses `-c credential.helper=` to disable credential
-    * helpers and `GIT_TERMINAL_PROMPT=0` so the clone fails fast instead
-    * of prompting for a password.
-    *
-    * @return the URL that actually succeeded (may differ from `repoUrl` when fallback was used)
-    */
-  def cloneWithFallback(repoUrl: String, targetPath: String): String = {
-    val noPromptEnv = Map("GIT_TERMINAL_PROMPT" -> "0")
-    Try {
-      os.proc("git", "-c", "credential.helper=", "clone", "--depth", "1", "--quiet", repoUrl, targetPath)
-        .call(stderr = os.Pipe, env = noPromptEnv)
-    } match {
-      case Success(_) => repoUrl
-      case Failure(_) if isGitHubHttpsUrl(repoUrl) =>
-        val sshUrl = gitHubHttpsToSsh(repoUrl)
-        Try {
-          os.proc("git", "clone", "--depth", "1", "--quiet", sshUrl, targetPath)
-            .call(stderr = os.Pipe)
-        } match {
-          case Success(_) => sshUrl
-          case Failure(sshEx) => throw sshEx // scalafix:ok DisableSyntax.throw
-        }
-      case Failure(ex) => throw ex // scalafix:ok DisableSyntax.throw
-    }
-  }
 
   /** Extract the repo name from the git URL. */
   def getRepoName(repoUrl: String): Option[String] = {
@@ -203,7 +162,7 @@ object Install {
     val (agents, locations) = resolveAgentsAndLocation(options)
 
     // Resolve source once
-    val resolvedSource = resolveSource(source)
+    val resolvedSource = resolveSource(source, allowInteractive = !options.yes)
 
     try {
       for {
@@ -298,13 +257,14 @@ object Install {
   }
 
   /** Resolve source into either a local path or a cloned git repo. */
-  private def resolveSource(source: String): ResolvedSource = {
+  private def resolveSource(source: String, allowInteractive: Boolean): ResolvedSource = {
     if isLocalPath(source) then {
       val localPath  = expandPath(source)
       val sourceInfo = InstallSourceInfo(
         source = source,
         sourceType = SkillSourceType.Local,
         repoUrl = none[String],
+        authMethod = none[GitAuthMethod],
         localRoot = localPath.some,
       )
       ResolvedSource.Local(localPath, sourceInfo)
@@ -313,40 +273,30 @@ object Install {
 
       val tempDir = aiskills.cli.TempDirCleanup.createTempDir()
 
-      val spinner = Spinner.createDefaultSideEffect(
-        SpinnerConfig
-          .default
-          .withText("Cloning repository...")
-          .withColor(Color.cyan)
-          .withIndent(2),
-      )
-      val _       = spinner.start()
-
-      val actualUrl =
-        Try {
-          cloneWithFallback(repoUrl, (tempDir / "repo").toString)
-        } match {
-          case Failure(ex) =>
-            val _   = spinner.fail("Clone failed".some)
-            val msg = ex.getMessage
-            if msg.nonEmpty then println(msg.dim) else ()
-            println("\nTip: For private repos, ensure git SSH keys or credentials are configured".yellow)
+      val cloned =
+        GitClone.cloneRepoWithUi(
+          repoUrl,
+          tempDir / "repo",
+          preferred = none[GitAuthMethod],
+          allowInteractive = allowInteractive,
+          texts = GitClone.CloneTexts("Cloning repository...", "Repository cloned", "Clone failed"),
+        ) match {
+          case Left(_) =>
             aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
             aiskills.cli.TempDirCleanup.unregister(tempDir)
             throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
-          case Success(url) =>
-            val _ = spinner.succeed("Repository cloned".some)
-            url
+          case Right(success) => success
         }
 
       val sourceInfo = InstallSourceInfo(
         source = source,
         sourceType = SkillSourceType.Git,
-        repoUrl = actualUrl.some,
+        repoUrl = cloned.url.some,
+        authMethod = cloned.method.some,
         localRoot = none[os.Path],
       )
 
-      ResolvedSource.Git(tempDir / "repo", actualUrl, skillSubpath, sourceInfo)
+      ResolvedSource.Git(tempDir / "repo", cloned.url, skillSubpath, sourceInfo)
     }
   }
 
@@ -703,6 +653,7 @@ object Install {
       source = sourceInfo.source,
       sourceType = SkillSourceType.Git,
       repoUrl = sourceInfo.repoUrl,
+      authMethod = sourceInfo.authMethod,
       subpath = subpath.some,
       localPath = none[String],
       installedAt = aiskills.core.utils.isoNow(),
@@ -713,6 +664,7 @@ object Install {
       source = sourceInfo.source,
       sourceType = SkillSourceType.Local,
       repoUrl = none[String],
+      authMethod = none[GitAuthMethod],
       subpath = none[String],
       localPath = skillDir.toString.some,
       installedAt = aiskills.core.utils.isoNow(),

@@ -5,10 +5,6 @@ import aiskills.core.utils.{Dirs, SkillMetadata, SkillNames, Skills, Yaml}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
-import just.spinner.*
-
-import scala.util.{Failure, Success, Try}
-
 object Update {
 
   /** Update installed skills from their recorded source metadata. */
@@ -115,37 +111,36 @@ object Update {
                     val skillNames  = groupSkills.map { case (skill, _) => skill.name }
                     val skillsLabel = if skillNames.length > 1 then s" (${skillNames.length} skills)" else ""
 
-                    val spinner = Spinner.createDefaultSideEffect(
-                      SpinnerConfig
-                        .default
-                        .withText(s"Cloning $cloneUrl$skillsLabel...")
-                        .withColor(Color.cyan)
-                        .withIndent(2),
-                    )
-                    val _       = spinner.start()
+                    // A recorded auth method is a hint: it only moves that method to the front of the chain.
+                    val preferred = groupSkills.collectFirst {
+                      case (_, meta) if meta.authMethod.isDefined => meta.authMethod
+                    }.flatten
 
-                    Try {
-                      Install.cloneWithFallback(cloneUrl, (repoSubDir / "repo").toString)
-                    } match {
-                      case Failure(ex) =>
-                        val _   = spinner.fail(s"Clone failed: $cloneUrl".some)
-                        val msg = ex.getMessage
-                        if msg.nonEmpty then println(msg.dim) else ()
+                    GitClone.cloneRepoWithUi(
+                      cloneUrl,
+                      repoSubDir / "repo",
+                      preferred = preferred,
+                      allowInteractive = true,
+                      texts = GitClone.CloneTexts(
+                        s"Cloning $cloneUrl$skillsLabel...",
+                        s"Cloned: $cloneUrl$skillsLabel",
+                        s"Clone failed: $cloneUrl",
+                      ),
+                    ) match {
+                      case Left(_) =>
                         groupSkills.foreach {
                           case (skill, _) =>
                             println(s"Skipped: ${skill.name} (git clone failed)".yellow)
                             cloneFailures += skill.name
                         }
 
-                      case Success(actualUrl) =>
-                        val _       = spinner.succeed(s"Cloned: $cloneUrl$skillsLabel".some)
+                      case Right(cloned) =>
                         val repoDir = repoSubDir / "repo"
 
                         groupSkills.foreach {
                           case (skill, meta) =>
-                            val originalRepoUrl = meta.repoUrl.getOrElse("")
-                            val subpath         = meta.subpath
-                            val sourceDir       = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
+                            val subpath   = meta.subpath
+                            val sourceDir = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
 
                             if !os.exists(sourceDir / "SKILL.md") then {
                               println(
@@ -155,9 +150,10 @@ object Update {
                             } else {
                               updateSkillFromDir(skill.path, sourceDir)
                               val updatedMeta =
-                                if actualUrl =!= originalRepoUrl
-                                then meta.withRepoUrl(actualUrl.some).withInstalledAt(aiskills.core.utils.isoNow())
-                                else meta.withInstalledAt(aiskills.core.utils.isoNow())
+                                meta
+                                  .withRepoUrl(cloned.url.some)
+                                  .withAuthMethod(cloned.method.some)
+                                  .withInstalledAt(aiskills.core.utils.isoNow())
                               SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
                               reapplyRename(skill.path, updatedMeta)
                               val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)

@@ -167,6 +167,7 @@ object Search {
     description: String,
     yamlName: String,
     actualRepoUrl: String,
+    authMethod: GitAuthMethod,
     tempDir: os.Path,
   )
 
@@ -184,28 +185,20 @@ object Search {
 
         val tempDir = aiskills.cli.TempDirCleanup.createTempDir()
 
-        val spinner = Spinner.createDefaultSideEffect(
-          SpinnerConfig
-            .default
-            .withText(s"Cloning $source...")
-            .withColor(Color.cyan)
-            .withIndent(2),
-        )
-        val _       = spinner.start()
-
-        Try {
-          Install.cloneWithFallback(repoUrl, (tempDir / "repo").toString)
-        } match {
-          case scala.util.Failure(_) =>
-            val _ = spinner.fail(s"Failed to clone $source".some)
+        GitClone.cloneRepoWithUi(
+          repoUrl,
+          tempDir / "repo",
+          preferred = none[GitAuthMethod],
+          allowInteractive = true,
+          texts = GitClone.CloneTexts(s"Cloning $source...", s"Cloned $source", s"Failed to clone $source"),
+        ) match {
+          case Left(_) =>
             System.err.println(s"Could not clone repository: $source".red)
             aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
             aiskills.cli.TempDirCleanup.unregister(tempDir)
             Nil
 
-          case scala.util.Success(actualUrl) =>
-            val _ = spinner.succeed(s"Cloned $source".some)
-
+          case Right(cloned) =>
             val repoDir = tempDir / "repo"
 
             results.flatMap { result =>
@@ -224,7 +217,8 @@ object Search {
                       content = content,
                       description = description,
                       yamlName = yamlName,
-                      actualRepoUrl = actualUrl,
+                      actualRepoUrl = cloned.url,
+                      authMethod = cloned.method,
                       tempDir = tempDir,
                     )
                   )
@@ -245,7 +239,8 @@ object Search {
                       content = "",
                       description = "",
                       yamlName = "",
-                      actualRepoUrl = actualUrl,
+                      actualRepoUrl = cloned.url,
+                      authMethod = cloned.method,
                       tempDir = tempDir,
                     )
                   )
@@ -296,6 +291,7 @@ object Search {
         source = c.result.source,
         sourceType = SkillSourceType.Git,
         repoUrl = c.actualRepoUrl.some,
+        authMethod = c.authMethod.some,
         localRoot = none[os.Path],
       )
       val metadata    = Install.buildGitMetadata(sourceInfo, subpath)
