@@ -1,6 +1,6 @@
 package aiskills.cli.commands
 
-import aiskills.core.GitAuthMethod
+import aiskills.core.{GitAuthMethod, GitHubOwnerRepo, RepoUrl}
 import cats.*
 import cats.derived.*
 import cats.syntax.all.*
@@ -21,8 +21,8 @@ import scala.util.{Failure, Success, Try}
 object GitClone {
 
   /** Extract `owner/repo` from a github.com URL in https, ssh, or git:// form. */
-  def gitHubOwnerRepo(url: String): Option[String] = {
-    val trimmed = url.trim
+  def gitHubOwnerRepo(url: RepoUrl): Option[GitHubOwnerRepo] = {
+    val trimmed = url.value.trim
     val path    =
       if trimmed.startsWith("https://github.com/") then trimmed.stripPrefix("https://github.com/").some
       else if trimmed.startsWith("git@github.com:") then trimmed.stripPrefix("git@github.com:").some
@@ -31,49 +31,70 @@ object GitClone {
 
     path.flatMap { p =>
       p.stripSuffix("/").stripSuffix(".git").split("/").toList match {
-        case owner :: repo :: Nil if owner.nonEmpty && repo.nonEmpty => s"$owner/$repo".some
-        case _ => none[String]
+        case owner :: repo :: Nil if owner.nonEmpty && repo.nonEmpty =>
+          GitHubOwnerRepo.from(s"$owner/$repo").toOption
+        case _ => none[GitHubOwnerRepo]
       }
     }
   }
 
   /** Canonical stored form for a github.com repo. */
-  def gitHubHttpsUrl(ownerRepo: String): String = s"https://github.com/$ownerRepo"
+  def gitHubHttpsUrl(ownerRepo: GitHubOwnerRepo): RepoUrl = RepoUrl(s"https://github.com/${ownerRepo.value}")
 
-  def gitHubSshUrl(ownerRepo: String): String = s"git@github.com:$ownerRepo.git"
+  def gitHubSshUrl(ownerRepo: GitHubOwnerRepo): RepoUrl = RepoUrl(s"git@github.com:${ownerRepo.value}.git")
 
-  def isSshUrl(url: String): Boolean = url.startsWith("git@") || url.startsWith("ssh://")
+  def isSshUrl(url: RepoUrl): Boolean = url.value.startsWith("git@") || url.value.startsWith("ssh://")
 
-  def isHttpUrl(url: String): Boolean = url.startsWith("https://") || url.startsWith("http://")
+  def isHttpUrl(url: RepoUrl): Boolean = url.value.startsWith("https://") || url.value.startsWith("http://")
 
   /** How `credential.helper` is configured for a single clone attempt. */
   enum CredentialHelperMode derives Eq, Show {
     case Disabled, Default, GhCli
   }
 
+  enum GhCliStatus derives Eq, Show {
+    case Available, Unavailable
+  }
+
+  enum CredentialHelperStatus derives Eq, Show {
+    case Configured, NotConfigured
+  }
+
+  enum Interactivity derives Eq, Show {
+    case Allowed, NotAllowed
+  }
+
+  enum TerminalPrompt derives Eq, Show {
+    case Allowed, Suppressed
+  }
+
+  enum InteractiveCloneChoice derives Eq, Show {
+    case Proceed, Abort
+  }
+
   final case class CloneStrategy(
     method: GitAuthMethod,
-    url: String,
+    url: RepoUrl,
     credentialHelper: CredentialHelperMode,
-    allowTerminalPrompt: Boolean,
+    terminalPrompt: TerminalPrompt,
   ) derives Eq,
         Show
 
   final case class CloneCapabilities(
-    ghAvailable: Boolean,
-    credentialHelperConfigured: Boolean,
-    interactiveAllowed: Boolean,
+    ghCli: GhCliStatus,
+    credentialHelper: CredentialHelperStatus,
+    interactivity: Interactivity,
   ) derives Eq,
         Show
 
-  final case class CloneAttempt(method: GitAuthMethod, url: String, error: String) derives Eq, Show
+  final case class CloneAttempt(method: GitAuthMethod, url: RepoUrl, error: String) derives Eq, Show
 
-  final case class CloneSuccess(url: String, method: GitAuthMethod) derives Eq, Show
+  final case class CloneSuccess(url: RepoUrl, method: GitAuthMethod) derives Eq, Show
 
   final case class CloneFailure(
     attempts: List[CloneAttempt],
     caps: CloneCapabilities,
-    interactiveUrl: Option[String],
+    interactiveUrl: Option[RepoUrl],
   ) derives Eq,
         Show
 
@@ -81,7 +102,7 @@ object GitClone {
 
   /** Build the ordered list of attempts for a repo URL. Pure: capabilities are passed in. */
   def buildStrategies(
-    repoUrl: String,
+    repoUrl: RepoUrl,
     caps: CloneCapabilities,
     preferred: Option[GitAuthMethod],
   ): List[CloneStrategy] = {
@@ -94,62 +115,72 @@ object GitClone {
             GitAuthMethod.Anonymous,
             https,
             CredentialHelperMode.Disabled,
-            allowTerminalPrompt = false,
+            TerminalPrompt.Suppressed,
           ).some,
           // ssh may legitimately prompt for a key passphrase
-          CloneStrategy(GitAuthMethod.Ssh, ssh, CredentialHelperMode.Default, allowTerminalPrompt = true).some,
-          if caps.ghAvailable then CloneStrategy(
-            GitAuthMethod.Gh,
-            https,
-            CredentialHelperMode.GhCli,
-            allowTerminalPrompt = false
-          ).some
-          else none[CloneStrategy],
-          if caps.credentialHelperConfigured then CloneStrategy(
-            GitAuthMethod.CredentialHelper,
-            https,
-            CredentialHelperMode.Default,
-            allowTerminalPrompt = false,
-          ).some
-          else none[CloneStrategy],
-          if caps.interactiveAllowed then CloneStrategy(
-            GitAuthMethod.Interactive,
-            https,
-            CredentialHelperMode.Default,
-            allowTerminalPrompt = true,
-          ).some
-          else none[CloneStrategy],
+          CloneStrategy(GitAuthMethod.Ssh, ssh, CredentialHelperMode.Default, TerminalPrompt.Allowed).some,
+          caps.ghCli match {
+            case GhCliStatus.Available =>
+              CloneStrategy(GitAuthMethod.Gh, https, CredentialHelperMode.GhCli, TerminalPrompt.Suppressed).some
+            case GhCliStatus.Unavailable => none[CloneStrategy]
+          },
+          caps.credentialHelper match {
+            case CredentialHelperStatus.Configured =>
+              CloneStrategy(
+                GitAuthMethod.CredentialHelper,
+                https,
+                CredentialHelperMode.Default,
+                TerminalPrompt.Suppressed,
+              ).some
+            case CredentialHelperStatus.NotConfigured => none[CloneStrategy]
+          },
+          caps.interactivity match {
+            case Interactivity.Allowed =>
+              CloneStrategy(
+                GitAuthMethod.Interactive,
+                https,
+                CredentialHelperMode.Default,
+                TerminalPrompt.Allowed,
+              ).some
+            case Interactivity.NotAllowed => none[CloneStrategy]
+          },
         ).flatten
 
       case None =>
         if isSshUrl(repoUrl) then List(
-          CloneStrategy(GitAuthMethod.Ssh, repoUrl, CredentialHelperMode.Default, allowTerminalPrompt = true)
+          CloneStrategy(GitAuthMethod.Ssh, repoUrl, CredentialHelperMode.Default, TerminalPrompt.Allowed)
         )
         else if isHttpUrl(repoUrl) then List(
           CloneStrategy(
             GitAuthMethod.Anonymous,
             repoUrl,
             CredentialHelperMode.Disabled,
-            allowTerminalPrompt = false,
+            TerminalPrompt.Suppressed,
           ).some,
-          if caps.credentialHelperConfigured then CloneStrategy(
-            GitAuthMethod.CredentialHelper,
-            repoUrl,
-            CredentialHelperMode.Default,
-            allowTerminalPrompt = false,
-          ).some
-          else none[CloneStrategy],
-          if caps.interactiveAllowed then CloneStrategy(
-            GitAuthMethod.Interactive,
-            repoUrl,
-            CredentialHelperMode.Default,
-            allowTerminalPrompt = true,
-          ).some
-          else none[CloneStrategy],
+          caps.credentialHelper match {
+            case CredentialHelperStatus.Configured =>
+              CloneStrategy(
+                GitAuthMethod.CredentialHelper,
+                repoUrl,
+                CredentialHelperMode.Default,
+                TerminalPrompt.Suppressed,
+              ).some
+            case CredentialHelperStatus.NotConfigured => none[CloneStrategy]
+          },
+          caps.interactivity match {
+            case Interactivity.Allowed =>
+              CloneStrategy(
+                GitAuthMethod.Interactive,
+                repoUrl,
+                CredentialHelperMode.Default,
+                TerminalPrompt.Allowed,
+              ).some
+            case Interactivity.NotAllowed => none[CloneStrategy]
+          },
         ).flatten
         else
           List(
-            CloneStrategy(GitAuthMethod.Anonymous, repoUrl, CredentialHelperMode.Disabled, allowTerminalPrompt = false)
+            CloneStrategy(GitAuthMethod.Anonymous, repoUrl, CredentialHelperMode.Disabled, TerminalPrompt.Suppressed)
           )
     }
 
@@ -173,14 +204,18 @@ object GitClone {
   def isStdinTty: Boolean =
     Try(unistd.isatty(unistd.STDIN_FILENO) === 1).getOrElse(false)
 
-  def detectGhAvailable(): Boolean =
-    Try(os.proc("gh", "--version").call(stdout = os.Pipe, stderr = os.Pipe)).isSuccess
+  def detectGhAvailable(): GhCliStatus =
+    if Try(os.proc("gh", "--version").call(stdout = os.Pipe, stderr = os.Pipe)).isSuccess
+    then GhCliStatus.Available
+    else GhCliStatus.Unavailable
 
-  def detectCredentialHelperConfigured(): Boolean =
-    Try(
+  def detectCredentialHelperConfigured(): CredentialHelperStatus =
+    if Try(
       os.proc("git", "config", "--get-regexp", "^credential(\\..+)?\\.helper$")
         .call(stdout = os.Pipe, stderr = os.Pipe)
     ).toOption.exists(_.out.text().trim.nonEmpty)
+    then CredentialHelperStatus.Configured
+    else CredentialHelperStatus.NotConfigured
 
   private def runGitClone(strategy: CloneStrategy, targetPath: os.Path): Try[Unit] = {
     val configArgs = strategy.credentialHelper match {
@@ -191,11 +226,12 @@ object GitClone {
         List("-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential")
     }
 
-    val env =
-      if strategy.allowTerminalPrompt then Map.empty[String, String]
-      else Map("GIT_TERMINAL_PROMPT" -> "0")
+    val env = strategy.terminalPrompt match {
+      case TerminalPrompt.Allowed => Map.empty[String, String]
+      case TerminalPrompt.Suppressed => Map("GIT_TERMINAL_PROMPT" -> "0")
+    }
 
-    val command = os.proc("git", configArgs, "clone", "--depth", "1", "--quiet", strategy.url, targetPath)
+    val command = os.proc("git", configArgs, "clone", "--depth", "1", "--quiet", strategy.url.value, targetPath)
 
     val attempted =
       if strategy.method === GitAuthMethod.Interactive then Try(
@@ -244,25 +280,29 @@ object GitClone {
       }
   }
 
-  private def canonicalUrlOf(repoUrl: String): String =
+  private def canonicalUrlOf(repoUrl: RepoUrl): RepoUrl =
     gitHubOwnerRepo(repoUrl).fold(repoUrl)(gitHubHttpsUrl)
 
   /** Run the non-interactive part of the chain. The interactive last resort is left to
     * [[cloneRepoWithUi]] so this stays usable when no terminal is attached.
     */
   def cloneWithFallback(
-    repoUrl: String,
+    repoUrl: RepoUrl,
     targetPath: os.Path,
     preferred: Option[GitAuthMethod],
-    allowInteractive: Boolean,
+    interactivity: Interactivity,
   ): Either[CloneFailure, CloneSuccess] = {
     val isGitHub       = gitHubOwnerRepo(repoUrl).isDefined
     val helperEligible = isGitHub || isHttpUrl(repoUrl)
 
     val caps = CloneCapabilities(
-      ghAvailable = isGitHub && detectGhAvailable(),
-      credentialHelperConfigured = helperEligible && detectCredentialHelperConfigured(),
-      interactiveAllowed = allowInteractive && isStdinTty,
+      ghCli = if isGitHub then detectGhAvailable() else GhCliStatus.Unavailable,
+      credentialHelper =
+        if helperEligible then detectCredentialHelperConfigured() else CredentialHelperStatus.NotConfigured,
+      interactivity = interactivity match {
+        case Interactivity.Allowed => if isStdinTty then Interactivity.Allowed else Interactivity.NotAllowed
+        case Interactivity.NotAllowed => Interactivity.NotAllowed
+      },
     )
 
     val strategies = buildStrategies(repoUrl, caps, preferred)
@@ -280,21 +320,25 @@ object GitClone {
     }
   }
 
-  private def printAttemptReport(repoUrl: String, failure: CloneFailure): Unit = {
+  private def printAttemptReport(repoUrl: RepoUrl, failure: CloneFailure): Unit = {
     failure.attempts.foreach { attempt =>
       println(s"  ${GitAuthMethod.render(attempt.method)}: ${attempt.error}".dim)
     }
 
     if gitHubOwnerRepo(repoUrl).isDefined then {
-      if !failure.caps.ghAvailable then println(
-        s"  ${GitAuthMethod.render(GitAuthMethod.Gh)}: skipped (gh not found on PATH)".dim
-      )
-      else ()
+      failure.caps.ghCli match {
+        case GhCliStatus.Unavailable =>
+          println(s"  ${GitAuthMethod.render(GitAuthMethod.Gh)}: skipped (gh not found on PATH)".dim)
+        case GhCliStatus.Available => ()
+      }
 
-      if !failure.caps.credentialHelperConfigured then println(
-        s"  ${GitAuthMethod.render(GitAuthMethod.CredentialHelper)}: skipped (no git credential helper configured)".dim
-      )
-      else ()
+      failure.caps.credentialHelper match {
+        case CredentialHelperStatus.NotConfigured =>
+          println(
+            s"  ${GitAuthMethod.render(GitAuthMethod.CredentialHelper)}: skipped (no git credential helper configured)".dim
+          )
+        case CredentialHelperStatus.Configured => ()
+      }
     } else ()
   }
 
@@ -303,7 +347,7 @@ object GitClone {
       "Tip: For private repos, set up an SSH key, run `gh auth login`, or configure a git credential helper".yellow
     )
 
-  private def askTryUserPassword(): Boolean = {
+  private def askTryUserPassword(): InteractiveCloneChoice = {
     val options = List(
       "Yes          — git will prompt for username/password",
       "No           — abort",
@@ -315,11 +359,12 @@ object GitClone {
         "Try https clone with username/password? (git will prompt, use a personal access token as the password)",
         options,
       ) match {
-        case Completion.Finished(selected) => selected.startsWith("Yes")
+        case Completion.Finished(selected) =>
+          if selected.startsWith("Yes") then InteractiveCloneChoice.Proceed else InteractiveCloneChoice.Abort
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
-          false
-        case Completion.Fail(CompletionError.Error(_)) => false
+          InteractiveCloneChoice.Abort
+        case Completion.Fail(CompletionError.Error(_)) => InteractiveCloneChoice.Abort
       }
     }
   }
@@ -328,10 +373,10 @@ object GitClone {
     * the option to let git ask for a username/password as a last resort.
     */
   def cloneRepoWithUi(
-    repoUrl: String,
+    repoUrl: RepoUrl,
     targetPath: os.Path,
     preferred: Option[GitAuthMethod],
-    allowInteractive: Boolean,
+    interactivity: Interactivity,
     texts: CloneTexts,
   ): Either[CloneFailure, CloneSuccess] = {
     val spinner = Spinner.createDefaultSideEffect(
@@ -343,7 +388,7 @@ object GitClone {
     )
     val _       = spinner.start()
 
-    cloneWithFallback(repoUrl, targetPath, preferred, allowInteractive) match {
+    cloneWithFallback(repoUrl, targetPath, preferred, interactivity) match {
       case Right(success) =>
         val _ = spinner.succeed(texts.cloned.some)
         success.asRight
@@ -359,31 +404,34 @@ object GitClone {
 
           case Some(httpsUrl) =>
             println("SSH, gh, and credential helper access all failed or are unavailable.".yellow)
-            if !askTryUserPassword() then {
-              printFinalTip()
-              failure.asLeft
-            } else
-              runGitClone(
-                CloneStrategy(
-                  GitAuthMethod.Interactive,
-                  httpsUrl,
-                  CredentialHelperMode.Default,
-                  allowTerminalPrompt = true,
-                ),
-                targetPath,
-              ) match {
-                case Success(_) =>
-                  println(texts.cloned.green)
-                  CloneSuccess(canonicalUrlOf(repoUrl), GitAuthMethod.Interactive).asRight
+            askTryUserPassword() match {
+              case InteractiveCloneChoice.Abort =>
+                printFinalTip()
+                failure.asLeft
 
-                case Failure(ex) =>
-                  printFinalTip()
-                  failure
-                    .copy(attempts =
-                      failure.attempts :+ CloneAttempt(GitAuthMethod.Interactive, httpsUrl, errorTextOf(ex))
-                    )
-                    .asLeft
-              }
+              case InteractiveCloneChoice.Proceed =>
+                runGitClone(
+                  CloneStrategy(
+                    GitAuthMethod.Interactive,
+                    httpsUrl,
+                    CredentialHelperMode.Default,
+                    TerminalPrompt.Allowed,
+                  ),
+                  targetPath,
+                ) match {
+                  case Success(_) =>
+                    println(texts.cloned.green)
+                    CloneSuccess(canonicalUrlOf(repoUrl), GitAuthMethod.Interactive).asRight
+
+                  case Failure(ex) =>
+                    printFinalTip()
+                    failure
+                      .copy(attempts =
+                        failure.attempts :+ CloneAttempt(GitAuthMethod.Interactive, httpsUrl, errorTextOf(ex))
+                      )
+                      .asLeft
+                }
+            }
         }
     }
   }

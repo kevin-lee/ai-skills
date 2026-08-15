@@ -27,8 +27,8 @@ object Install {
       source.endsWith(".git")
 
   /** Extract the repo name from the git URL. */
-  def getRepoName(repoUrl: String): Option[String] = {
-    val cleaned = repoUrl.stripSuffix(".git")
+  def getRepoName(repoUrl: RepoUrl): Option[String] = {
+    val cleaned = repoUrl.value.stripSuffix(".git")
     cleaned.split("/").lastOption.flatMap { lastPart =>
       val maybeRepo = if lastPart.contains(":") then lastPart.split(":").lastOption else lastPart.some
       maybeRepo.filter(_.nonEmpty)
@@ -162,7 +162,11 @@ object Install {
     val (agents, locations) = resolveAgentsAndLocation(options)
 
     // Resolve source once
-    val resolvedSource = resolveSource(source, allowInteractive = !options.yes)
+    val resolvedSource = resolveSource(
+      source,
+      interactivity =
+        if options.yes then GitClone.Interactivity.NotAllowed else GitClone.Interactivity.Allowed,
+    )
 
     try {
       for {
@@ -223,7 +227,7 @@ object Install {
   /** Resolved source — either local or a cloned git repo. */
   private enum ResolvedSource {
     case Local(localPath: os.Path, sourceInfo: InstallSourceInfo)
-    case Git(repoDir: os.Path, repoUrl: String, skillSubpath: String, sourceInfo: InstallSourceInfo)
+    case Git(repoDir: os.Path, repoUrl: RepoUrl, skillSubpath: String, sourceInfo: InstallSourceInfo)
   }
 
   private object ResolvedSource {
@@ -239,15 +243,15 @@ object Install {
   }
 
   /** Parse a non-local source into (repoUrl, skillSubpath). */
-  private def parseGitSource(source: String): (String, String) = {
-    if isGitUrl(source) then (source, "")
+  private def parseGitSource(source: String): (RepoUrl, String) = {
+    if isGitUrl(source) then (RepoUrl(source), "")
     else {
       val parts = source.split("/").toList
       parts match {
         case owner :: repo :: Nil =>
-          (s"https://github.com/$source", "")
+          (RepoUrl(s"https://github.com/$source"), "")
         case owner :: repo :: rest =>
-          (s"https://github.com/$owner/$repo", rest.mkString("/"))
+          (RepoUrl(s"https://github.com/$owner/$repo"), rest.mkString("/"))
         case _ =>
           System.err.println("Error: Invalid source format".red)
           System.err.println("Expected: owner/repo, owner/repo/skill-name, git URL, or local path")
@@ -257,13 +261,13 @@ object Install {
   }
 
   /** Resolve source into either a local path or a cloned git repo. */
-  private def resolveSource(source: String, allowInteractive: Boolean): ResolvedSource = {
+  private def resolveSource(source: String, interactivity: GitClone.Interactivity): ResolvedSource = {
     if isLocalPath(source) then {
       val localPath  = expandPath(source)
       val sourceInfo = InstallSourceInfo(
         source = source,
         sourceType = SkillSourceType.Local,
-        repoUrl = none[String],
+        repoUrl = none[RepoUrl],
         authMethod = none[GitAuthMethod],
         localRoot = localPath.some,
       )
@@ -278,7 +282,7 @@ object Install {
           repoUrl,
           tempDir / "repo",
           preferred = none[GitAuthMethod],
-          allowInteractive = allowInteractive,
+          interactivity = interactivity,
           texts = GitClone.CloneTexts("Cloning repository...", "Repository cloned", "Clone failed"),
         ) match {
           case Left(_) =>
@@ -663,7 +667,7 @@ object Install {
     SkillSourceMetadata(
       source = sourceInfo.source,
       sourceType = SkillSourceType.Local,
-      repoUrl = none[String],
+      repoUrl = none[RepoUrl],
       authMethod = none[GitAuthMethod],
       subpath = none[String],
       localPath = skillDir.toString.some,

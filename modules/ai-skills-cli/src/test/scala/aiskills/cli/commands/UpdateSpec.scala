@@ -1,5 +1,6 @@
 package aiskills.cli.commands
 
+import aiskills.core.RepoUrl
 import hedgehog.*
 import hedgehog.runner.*
 
@@ -21,38 +22,38 @@ object UpdateSpec extends Properties {
   )
 
   private def testNormalizeHttps: Result =
-    Update.normalizeRepoUrl("https://github.com/owner/repo") ==== "github.com/owner/repo"
+    Update.normalizeRepoUrl(RepoUrl("https://github.com/owner/repo")) ==== "github.com/owner/repo"
 
   private def testNormalizeHttpsDotGit: Result =
-    Update.normalizeRepoUrl("https://github.com/owner/repo.git") ==== "github.com/owner/repo"
+    Update.normalizeRepoUrl(RepoUrl("https://github.com/owner/repo.git")) ==== "github.com/owner/repo"
 
   private def testNormalizeSsh: Result =
-    Update.normalizeRepoUrl("git@github.com:owner/repo.git") ==== "github.com/owner/repo"
+    Update.normalizeRepoUrl(RepoUrl("git@github.com:owner/repo.git")) ==== "github.com/owner/repo"
 
   private def testNormalizeSshNoDotGit: Result =
-    Update.normalizeRepoUrl("git@github.com:owner/repo") ==== "github.com/owner/repo"
+    Update.normalizeRepoUrl(RepoUrl("git@github.com:owner/repo")) ==== "github.com/owner/repo"
 
   private def testHttpsSshSame: Result = {
-    val https = Update.normalizeRepoUrl("https://github.com/anthropics/skills")
-    val ssh   = Update.normalizeRepoUrl("git@github.com:anthropics/skills.git")
+    val https = Update.normalizeRepoUrl(RepoUrl("https://github.com/anthropics/skills"))
+    val ssh   = Update.normalizeRepoUrl(RepoUrl("git@github.com:anthropics/skills.git"))
     https ==== ssh
   }
 
   private def testNormalizeHttp: Result =
-    Update.normalizeRepoUrl("http://github.com/owner/repo") ==== "github.com/owner/repo"
+    Update.normalizeRepoUrl(RepoUrl("http://github.com/owner/repo")) ==== "github.com/owner/repo"
 
   private def testNormalizeGitProtocol: Result =
-    Update.normalizeRepoUrl("git://github.com/owner/repo.git") ==== "github.com/owner/repo"
+    Update.normalizeRepoUrl(RepoUrl("git://github.com/owner/repo.git")) ==== "github.com/owner/repo"
 
   private def testNormalizeGitLab: Result =
-    Update.normalizeRepoUrl("https://gitlab.com/group/project") ==== "gitlab.com/group/project"
+    Update.normalizeRepoUrl(RepoUrl("https://gitlab.com/group/project")) ==== "gitlab.com/group/project"
 
   private def testNormalizeTrailingSlash: Result =
-    Update.normalizeRepoUrl("https://github.com/owner/repo/") ==== "github.com/owner/repo"
+    Update.normalizeRepoUrl(RepoUrl("https://github.com/owner/repo/")) ==== "github.com/owner/repo"
 
   private def testNormalizeLowercase: Result =
-    Update.normalizeRepoUrl("https://github.com/Owner/Repo") ==== "github.com/owner/repo"
+    Update.normalizeRepoUrl(RepoUrl("https://github.com/Owner/Repo")) ==== "github.com/owner/repo"
 
   private def testNormalizeUnknown: Result =
-    Update.normalizeRepoUrl("some-custom-url") ==== "some-custom-url"
+    Update.normalizeRepoUrl(RepoUrl("some-custom-url")) ==== "some-custom-url"
 }

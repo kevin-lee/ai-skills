@@ -1,9 +1,13 @@
 package aiskills.core
 
+import aiskills.core.internal.GitHubOwnerRepoValidator
 import cats.*
 import cats.derived.*
 import cats.syntax.all.*
 import io.circe.{Codec, Decoder, Encoder}
+import refined4s.*
+import refined4s.modules.cats.derivation.*
+import refined4s.modules.circe.derivation.*
 
 given Eq[os.Path]   = Eq.fromUniversalEquals
 given Show[os.Path] = Show.fromToString
@@ -149,6 +153,27 @@ object SkillSourceType {
   }
 }
 
+/** Any git clone source: an https/ssh/git URL or a local .git path. */
+type RepoUrl = RepoUrl.Type
+object RepoUrl extends Newtype[String], CatsEqShow[String], CirceNewtypeCodec[String]
+
+/** A GitHub repo identity in `owner/repo` form. */
+type GitHubOwnerRepo = GitHubOwnerRepo.Type
+object GitHubOwnerRepo extends InlinedRefined[String], CatsEqShow[String] {
+
+  override inline def inlinedExpectedValue: String =
+    """in the form owner/repo with non-empty owner and repo (e.g. "kevin-lee/ai-dumping-ground")"""
+
+  override inline def inlinedPredicate(inline a: String): Boolean =
+    ${ GitHubOwnerRepoValidator.isValidExpr('a) }
+
+  override def invalidReason(a: String): String =
+    expectedMessage("""in the form owner/repo with non-empty owner and repo (e.g. "kevin-lee/ai-dumping-ground")""")
+
+  override def predicate(a: String): Boolean = GitHubOwnerRepoValidator.isValid(a)
+
+}
+
 /** How a Git repository was successfully accessed. */
 enum GitAuthMethod derives Eq, Show {
   case Anonymous, Ssh, Gh, CredentialHelper, Interactive
@@ -181,7 +206,7 @@ final case class SkillSourceMetadata private (
   name: Option[String], // For backward compat: existing .aiskills.json without name
   source: String,
   sourceType: SkillSourceType,
-  repoUrl: Option[String],
+  repoUrl: Option[RepoUrl],
   authMethod: Option[GitAuthMethod], // None means "no recorded method": run the full fallback chain
   subpath: Option[String], // Canonical: None means the skill is at the repo root
   localPath: Option[String],
@@ -196,7 +221,7 @@ object SkillSourceMetadata {
 
     def withInstalledAt(at: String): SkillSourceMetadata = skillSourceMetadata.copy(installedAt = at)
 
-    def withRepoUrl(url: Option[String]): SkillSourceMetadata = skillSourceMetadata.copy(repoUrl = url)
+    def withRepoUrl(url: Option[RepoUrl]): SkillSourceMetadata = skillSourceMetadata.copy(repoUrl = url)
 
     def withAuthMethod(method: Option[GitAuthMethod]): SkillSourceMetadata =
       skillSourceMetadata.copy(authMethod = method)
@@ -212,7 +237,7 @@ object SkillSourceMetadata {
     name: Option[String] = none[String], // scalafix:ok DisableSyntax.defaultArgs
     source: String,
     sourceType: SkillSourceType,
-    repoUrl: Option[String],
+    repoUrl: Option[RepoUrl],
     authMethod: Option[GitAuthMethod],
     subpath: Option[String],
     localPath: Option[String],
@@ -313,7 +338,7 @@ final case class SyncOptions(
 final case class InstallSourceInfo(
   source: String,
   sourceType: SkillSourceType,
-  repoUrl: Option[String],
+  repoUrl: Option[RepoUrl],
   authMethod: Option[GitAuthMethod],
   localRoot: Option[os.Path],
 ) derives Eq,

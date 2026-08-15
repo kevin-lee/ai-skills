@@ -1,6 +1,6 @@
 package aiskills.cli.commands
 
-import aiskills.core.SkillSourceType
+import aiskills.core.{RepoUrl, SkillSourceType}
 import aiskills.core.utils.{Dirs, SkillMetadata, SkillNames, Skills, Yaml}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
@@ -105,7 +105,7 @@ object Update {
               case ((_, groupSkills), idx) =>
                 groupSkills.headOption.foreach {
                   case (firstSkill, firstMeta) =>
-                    val cloneUrl    = firstMeta.repoUrl.getOrElse(firstSkill.name)
+                    val cloneUrl    = firstMeta.repoUrl.getOrElse(RepoUrl(firstSkill.name))
                     val repoSubDir  = parentTempDir / s"repo-$idx"
                     os.makeDir.all(repoSubDir)
                     val skillNames  = groupSkills.map { case (skill, _) => skill.name }
@@ -120,11 +120,11 @@ object Update {
                       cloneUrl,
                       repoSubDir / "repo",
                       preferred = preferred,
-                      allowInteractive = true,
+                      interactivity = GitClone.Interactivity.Allowed,
                       texts = GitClone.CloneTexts(
-                        s"Cloning $cloneUrl$skillsLabel...",
-                        s"Cloned: $cloneUrl$skillsLabel",
-                        s"Clone failed: $cloneUrl",
+                        s"Cloning ${cloneUrl.value}$skillsLabel...",
+                        s"Cloned: ${cloneUrl.value}$skillsLabel",
+                        s"Clone failed: ${cloneUrl.value}",
                       ),
                     ) match {
                       case Left(_) =>
@@ -259,8 +259,8 @@ object Update {
     * "git@github.com:owner/repo.git"     -> "github.com/owner/repo"
     * }}}
     */
-  def normalizeRepoUrl(url: String): String = {
-    val cleaned = url.trim.stripSuffix("/").stripSuffix(".git").toLowerCase
+  def normalizeRepoUrl(url: RepoUrl): String = {
+    val cleaned = url.value.trim.stripSuffix("/").stripSuffix(".git").toLowerCase
     if cleaned.startsWith("git@") then {
       val afterAt  = cleaned.stripPrefix("git@")
       val colonIdx = afterAt.indexOf(':')

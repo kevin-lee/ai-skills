@@ -1,7 +1,15 @@
 package aiskills.cli.commands
 
-import aiskills.cli.commands.GitClone.{CloneCapabilities, CloneStrategy, CredentialHelperMode}
-import aiskills.core.GitAuthMethod
+import aiskills.cli.commands.GitClone.{
+  CloneCapabilities,
+  CloneStrategy,
+  CredentialHelperMode,
+  CredentialHelperStatus,
+  GhCliStatus,
+  Interactivity,
+  TerminalPrompt
+}
+import aiskills.core.{GitAuthMethod, GitHubOwnerRepo, RepoUrl}
 import cats.syntax.all.*
 import hedgehog.*
 import hedgehog.runner.*
@@ -19,6 +27,12 @@ object GitCloneSpec extends Properties {
     example("gitHubOwnerRepo: rejects non-GitHub SSH URL", testOwnerRepoNotGitHubSsh),
     example("gitHubOwnerRepo: rejects extra path segments", testOwnerRepoExtraSegments),
     example("gitHubOwnerRepo: rejects a single segment", testOwnerRepoSingleSegment),
+    // GitHubOwnerRepo(String)
+    example("""GitHubOwnerRepo("owner/repo"): accepts owner/repo""", testGitHubOwnerRepoApplyValid),
+    example("""GitHubOwnerRepo("invalid String"): rejects invalid value""", testGitHubOwnerRepoApplyInvalid),
+    // GitHubOwnerRepo.from
+    example("GitHubOwnerRepo.from: accepts owner/repo", testGitHubOwnerRepoFromValid),
+    example("GitHubOwnerRepo.from: rejects invalid forms", testGitHubOwnerRepoFromInvalid),
     // URL rendering
     example("gitHubHttpsUrl: renders the canonical HTTPS URL", testGitHubHttpsUrl),
     example("gitHubSshUrl: renders the SSH URL", testGitHubSshUrl),
@@ -38,74 +52,146 @@ object GitCloneSpec extends Properties {
   )
 
   private val allCaps = CloneCapabilities(
-    ghAvailable = true,
-    credentialHelperConfigured = true,
-    interactiveAllowed = true,
+    ghCli = GhCliStatus.Available,
+    credentialHelper = CredentialHelperStatus.Configured,
+    interactivity = Interactivity.Allowed,
   )
 
   private val noCaps = CloneCapabilities(
-    ghAvailable = false,
-    credentialHelperConfigured = false,
-    interactiveAllowed = false,
+    ghCli = GhCliStatus.Unavailable,
+    credentialHelper = CredentialHelperStatus.NotConfigured,
+    interactivity = Interactivity.NotAllowed,
   )
 
-  private val gitHubHttps = "https://github.com/owner/repo"
-  private val gitHubSsh   = "git@github.com:owner/repo.git"
+  private val gitHubHttps = RepoUrl("https://github.com/owner/repo")
+  private val gitHubSsh   = RepoUrl("git@github.com:owner/repo.git")
 
   private val fullGitHubChain = List(
-    CloneStrategy(GitAuthMethod.Anonymous, gitHubHttps, CredentialHelperMode.Disabled, allowTerminalPrompt = false),
-    CloneStrategy(GitAuthMethod.Ssh, gitHubSsh, CredentialHelperMode.Default, allowTerminalPrompt = true),
-    CloneStrategy(GitAuthMethod.Gh, gitHubHttps, CredentialHelperMode.GhCli, allowTerminalPrompt = false),
+    CloneStrategy(GitAuthMethod.Anonymous, gitHubHttps, CredentialHelperMode.Disabled, TerminalPrompt.Suppressed),
+    CloneStrategy(GitAuthMethod.Ssh, gitHubSsh, CredentialHelperMode.Default, TerminalPrompt.Allowed),
+    CloneStrategy(GitAuthMethod.Gh, gitHubHttps, CredentialHelperMode.GhCli, TerminalPrompt.Suppressed),
     CloneStrategy(
       GitAuthMethod.CredentialHelper,
       gitHubHttps,
       CredentialHelperMode.Default,
-      allowTerminalPrompt = false
+      TerminalPrompt.Suppressed
     ),
-    CloneStrategy(GitAuthMethod.Interactive, gitHubHttps, CredentialHelperMode.Default, allowTerminalPrompt = true),
+    CloneStrategy(GitAuthMethod.Interactive, gitHubHttps, CredentialHelperMode.Default, TerminalPrompt.Allowed),
   )
 
   private def methodsOf(strategies: List[CloneStrategy]): List[GitAuthMethod] = strategies.map(_.method)
 
   private def testOwnerRepoHttps: Result =
-    GitClone.gitHubOwnerRepo("https://github.com/owner/repo") ==== "owner/repo".some
+    GitClone.gitHubOwnerRepo(RepoUrl("https://github.com/owner/repo")) ==== GitHubOwnerRepo
+      .unsafeFrom("owner/repo")
+      .some
 
   private def testOwnerRepoHttpsDotGit: Result =
-    GitClone.gitHubOwnerRepo("https://github.com/owner/repo.git") ==== "owner/repo".some
+    GitClone.gitHubOwnerRepo(RepoUrl("https://github.com/owner/repo.git")) ==== GitHubOwnerRepo
+      .unsafeFrom("owner/repo")
+      .some
 
   private def testOwnerRepoHttpsTrailingSlash: Result =
-    GitClone.gitHubOwnerRepo("https://github.com/owner/repo/") ==== "owner/repo".some
+    GitClone.gitHubOwnerRepo(RepoUrl("https://github.com/owner/repo/")) ==== GitHubOwnerRepo
+      .unsafeFrom("owner/repo")
+      .some
 
   private def testOwnerRepoSsh: Result =
-    GitClone.gitHubOwnerRepo("git@github.com:owner/repo.git") ==== "owner/repo".some
+    GitClone.gitHubOwnerRepo(RepoUrl("git@github.com:owner/repo.git")) ==== GitHubOwnerRepo
+      .unsafeFrom("owner/repo")
+      .some
 
   private def testOwnerRepoGitProtocol: Result =
-    GitClone.gitHubOwnerRepo("git://github.com/owner/repo.git") ==== "owner/repo".some
+    GitClone.gitHubOwnerRepo(RepoUrl("git://github.com/owner/repo.git")) ==== GitHubOwnerRepo
+      .unsafeFrom("owner/repo")
+      .some
 
   private def testOwnerRepoNotGitHubHttps: Result =
-    GitClone.gitHubOwnerRepo("https://gitlab.com/owner/repo") ==== none[String]
+    GitClone.gitHubOwnerRepo(RepoUrl("https://gitlab.com/owner/repo")) ==== none[GitHubOwnerRepo]
 
   private def testOwnerRepoNotGitHubSsh: Result =
-    GitClone.gitHubOwnerRepo("git@gitlab.com:owner/repo.git") ==== none[String]
+    GitClone.gitHubOwnerRepo(RepoUrl("git@gitlab.com:owner/repo.git")) ==== none[GitHubOwnerRepo]
 
   private def testOwnerRepoExtraSegments: Result =
-    GitClone.gitHubOwnerRepo("https://github.com/owner/repo/skills/demo") ==== none[String]
+    GitClone.gitHubOwnerRepo(RepoUrl("https://github.com/owner/repo/skills/demo")) ==== none[GitHubOwnerRepo]
 
   private def testOwnerRepoSingleSegment: Result =
-    GitClone.gitHubOwnerRepo("https://github.com/owner") ==== none[String]
+    GitClone.gitHubOwnerRepo(RepoUrl("https://github.com/owner")) ==== none[GitHubOwnerRepo]
+
+  private def testGitHubOwnerRepoApplyValid: Result =
+    GitHubOwnerRepo("owner/repo").value ==== "owner/repo"
+
+  private def testGitHubOwnerRepoApplyInvalid: Result = {
+    import scala.compiletime.testing.typeCheckErrors
+
+    val expected1 = s"""Invalid value: ["owner"]. It must be ${GitHubOwnerRepo.inlinedExpectedValue}."""
+    val actual1   = typeCheckErrors(
+      """
+      GitHubOwnerRepo("owner")
+      """
+    ).map(_.message).mkString("\n")
+
+    val expected2 = s"""Invalid value: ["owner/"]. It must be ${GitHubOwnerRepo.inlinedExpectedValue}."""
+    val actual2   = typeCheckErrors(
+      """
+      GitHubOwnerRepo("owner/")
+      """
+    ).map(_.message).mkString("\n")
+
+    val expected3 = s"""Invalid value: ["/repo"]. It must be ${GitHubOwnerRepo.inlinedExpectedValue}."""
+    val actual3   = typeCheckErrors(
+      """
+      GitHubOwnerRepo("/repo")
+      """
+    ).map(_.message).mkString("\n")
+
+    val expected4 = s"""Invalid value: ["owner/repo/extra"]. It must be ${GitHubOwnerRepo.inlinedExpectedValue}."""
+    val actual4   = typeCheckErrors(
+      """
+      GitHubOwnerRepo("owner/repo/extra")
+      """
+    ).map(_.message).mkString("\n")
+
+    val expected5 = s"""Invalid value: ["/"]. It must be ${GitHubOwnerRepo.inlinedExpectedValue}."""
+    val actual5   = typeCheckErrors(
+      """
+      GitHubOwnerRepo("/")
+      """
+    ).map(_.message).mkString("\n")
+
+    Result.all(
+      List(
+        actual1 ==== expected1,
+        actual2 ==== expected2,
+        actual3 ==== expected3,
+        actual4 ==== expected4,
+        actual5 ==== expected5,
+      )
+    )
+  }
+
+  private def testGitHubOwnerRepoFromValid: Result =
+    GitHubOwnerRepo.from("owner/repo").map(_.value) ==== "owner/repo".asRight[String]
+
+  private def testGitHubOwnerRepoFromInvalid: Result =
+    Result.all(
+      List("owner", "owner/", "/repo", "owner/repo/extra").map(invalid =>
+        Result.assert(GitHubOwnerRepo.from(invalid).isLeft).log(s"Expected Left for: $invalid")
+      )
+    )
 
   private def testGitHubHttpsUrl: Result =
-    GitClone.gitHubHttpsUrl("owner/repo") ==== "https://github.com/owner/repo"
+    GitClone.gitHubHttpsUrl(GitHubOwnerRepo.unsafeFrom("owner/repo")) ==== RepoUrl("https://github.com/owner/repo")
 
   private def testGitHubSshUrl: Result =
-    GitClone.gitHubSshUrl("owner/repo") ==== "git@github.com:owner/repo.git"
+    GitClone.gitHubSshUrl(GitHubOwnerRepo.unsafeFrom("owner/repo")) ==== RepoUrl("git@github.com:owner/repo.git")
 
   private def testChainFull: Result =
     GitClone.buildStrategies(gitHubHttps, allCaps, none[GitAuthMethod]) ==== fullGitHubChain
 
   private def testChainNoGh: Result =
     methodsOf(
-      GitClone.buildStrategies(gitHubHttps, allCaps.copy(ghAvailable = false), none[GitAuthMethod])
+      GitClone.buildStrategies(gitHubHttps, allCaps.copy(ghCli = GhCliStatus.Unavailable), none[GitAuthMethod])
     ) ==== List(
       GitAuthMethod.Anonymous,
       GitAuthMethod.Ssh,
@@ -115,12 +201,16 @@ object GitCloneSpec extends Properties {
 
   private def testChainNoHelper: Result =
     methodsOf(
-      GitClone.buildStrategies(gitHubHttps, allCaps.copy(credentialHelperConfigured = false), none[GitAuthMethod])
+      GitClone.buildStrategies(
+        gitHubHttps,
+        allCaps.copy(credentialHelper = CredentialHelperStatus.NotConfigured),
+        none[GitAuthMethod],
+      )
     ) ==== List(GitAuthMethod.Anonymous, GitAuthMethod.Ssh, GitAuthMethod.Gh, GitAuthMethod.Interactive)
 
   private def testChainNoInteractive: Result =
     methodsOf(
-      GitClone.buildStrategies(gitHubHttps, allCaps.copy(interactiveAllowed = false), none[GitAuthMethod])
+      GitClone.buildStrategies(gitHubHttps, allCaps.copy(interactivity = Interactivity.NotAllowed), none[GitAuthMethod])
     ) ==== List(
       GitAuthMethod.Anonymous,
       GitAuthMethod.Ssh,
@@ -142,7 +232,7 @@ object GitCloneSpec extends Properties {
 
   private def testPreferredGhUnavailable: Result =
     methodsOf(
-      GitClone.buildStrategies(gitHubHttps, allCaps.copy(ghAvailable = false), GitAuthMethod.Gh.some)
+      GitClone.buildStrategies(gitHubHttps, allCaps.copy(ghCli = GhCliStatus.Unavailable), GitAuthMethod.Gh.some)
     ) ==== List(
       GitAuthMethod.Anonymous,
       GitAuthMethod.Ssh,
@@ -154,37 +244,37 @@ object GitCloneSpec extends Properties {
     GitClone.buildStrategies(gitHubHttps, allCaps, GitAuthMethod.Interactive.some) ==== fullGitHubChain
 
   private def testNonGitHubSsh: Result =
-    GitClone.buildStrategies("git@gitlab.com:owner/repo.git", allCaps, none[GitAuthMethod]) ==== List(
+    GitClone.buildStrategies(RepoUrl("git@gitlab.com:owner/repo.git"), allCaps, none[GitAuthMethod]) ==== List(
       CloneStrategy(
         GitAuthMethod.Ssh,
-        "git@gitlab.com:owner/repo.git",
+        RepoUrl("git@gitlab.com:owner/repo.git"),
         CredentialHelperMode.Default,
-        allowTerminalPrompt = true,
+        TerminalPrompt.Allowed,
       )
     )
 
   private def testNonGitHubHttps: Result =
     methodsOf(
-      GitClone.buildStrategies("https://gitlab.com/owner/repo", allCaps, none[GitAuthMethod])
+      GitClone.buildStrategies(RepoUrl("https://gitlab.com/owner/repo"), allCaps, none[GitAuthMethod])
     ) ==== List(GitAuthMethod.Anonymous, GitAuthMethod.CredentialHelper, GitAuthMethod.Interactive)
 
   private def testNonGitHubGitProtocol: Result =
-    GitClone.buildStrategies("git://gitlab.com/owner/repo.git", allCaps, none[GitAuthMethod]) ==== List(
+    GitClone.buildStrategies(RepoUrl("git://gitlab.com/owner/repo.git"), allCaps, none[GitAuthMethod]) ==== List(
       CloneStrategy(
         GitAuthMethod.Anonymous,
-        "git://gitlab.com/owner/repo.git",
+        RepoUrl("git://gitlab.com/owner/repo.git"),
         CredentialHelperMode.Disabled,
-        allowTerminalPrompt = false,
+        TerminalPrompt.Suppressed,
       )
     )
 
   private def testLocalGitPath: Result =
-    GitClone.buildStrategies("/tmp/local/repo.git", noCaps, none[GitAuthMethod]) ==== List(
+    GitClone.buildStrategies(RepoUrl("/tmp/local/repo.git"), noCaps, none[GitAuthMethod]) ==== List(
       CloneStrategy(
         GitAuthMethod.Anonymous,
-        "/tmp/local/repo.git",
+        RepoUrl("/tmp/local/repo.git"),
         CredentialHelperMode.Disabled,
-        allowTerminalPrompt = false,
+        TerminalPrompt.Suppressed,
       )
     )
 }

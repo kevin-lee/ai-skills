@@ -1,6 +1,6 @@
 package aiskills.cli.commands
 
-import aiskills.core.{GitAuthMethod, SkillSourceMetadata, SkillSourceType}
+import aiskills.core.{GitAuthMethod, RepoUrl, SkillSourceMetadata, SkillSourceType}
 import aiskills.core.utils.SkillMetadata
 import cats.syntax.all.*
 import hedgehog.*
@@ -233,13 +233,13 @@ object InstallSpec extends Properties {
 
   // getRepoName tests
   private def testRepoNameHttps: Result =
-    Install.getRepoName("https://github.com/owner/repo") ==== "repo".some
+    Install.getRepoName(RepoUrl("https://github.com/owner/repo")) ==== "repo".some
 
   private def testRepoNameSsh: Result =
-    Install.getRepoName("git@github.com:owner/repo.git") ==== "repo".some
+    Install.getRepoName(RepoUrl("git@github.com:owner/repo.git")) ==== "repo".some
 
   private def testRepoNameStripGit: Result =
-    Install.getRepoName("https://github.com/owner/repo.git") ==== "repo".some
+    Install.getRepoName(RepoUrl("https://github.com/owner/repo.git")) ==== "repo".some
 
   // formatSize tests
   private def testFormatBytes: Result =
@@ -340,7 +340,7 @@ object InstallSpec extends Properties {
       val metadata = SkillSourceMetadata(
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
-        repoUrl = "https://github.com/owner/repo".some,
+        repoUrl = RepoUrl("https://github.com/owner/repo").some,
         authMethod = GitAuthMethod.Anonymous.some,
         subpath = "path/to/my-skill".some,
         localPath = none[String],
