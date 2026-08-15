@@ -1,6 +1,6 @@
 package aiskills.cli.commands
 
-import aiskills.core.{SkillSourceMetadata, SkillSourceType}
+import aiskills.core.{GitAuthMethod, SkillSourceMetadata, SkillSourceType}
 import aiskills.core.utils.SkillMetadata
 import cats.syntax.all.*
 import hedgehog.*
@@ -46,16 +46,6 @@ object InstallSpec extends Properties {
     // GitHub shorthand parsing
     example("GitHub shorthand: owner/repo", testGithubOwnerRepo),
     example("GitHub shorthand: owner/repo/path", testGithubOwnerRepoPath),
-    // isGitHubHttpsUrl
-    example("isGitHubHttpsUrl: detects GitHub HTTPS URL", testIsGitHubHttpsUrl),
-    example("isGitHubHttpsUrl: detects GitHub HTTPS URL with .git", testIsGitHubHttpsUrlDotGit),
-    example("isGitHubHttpsUrl: rejects non-GitHub HTTPS", testIsGitHubHttpsUrlNotGitLab),
-    example("isGitHubHttpsUrl: rejects SSH URL", testIsGitHubHttpsUrlNotSsh),
-    example("isGitHubHttpsUrl: rejects HTTP URL", testIsGitHubHttpsUrlNotHttp),
-    // gitHubHttpsToSsh
-    example("gitHubHttpsToSsh: converts plain URL", testGitHubHttpsToSshPlain),
-    example("gitHubHttpsToSsh: converts URL with .git", testGitHubHttpsToSshDotGit),
-    example("gitHubHttpsToSsh: converts URL with trailing slash", testGitHubHttpsToSshTrailingSlash),
     // skillLabel
     example("skillLabel: formats label with name, subpath, and size", testSkillLabelBasic),
     example("skillLabel: formats label with long subpath", testSkillLabelLongSubpath),
@@ -284,32 +274,6 @@ object InstallSpec extends Properties {
     )
   }
 
-  // isGitHubHttpsUrl tests
-  private def testIsGitHubHttpsUrl: Result =
-    Result.assert(Install.isGitHubHttpsUrl("https://github.com/owner/repo"))
-
-  private def testIsGitHubHttpsUrlDotGit: Result =
-    Result.assert(Install.isGitHubHttpsUrl("https://github.com/owner/repo.git"))
-
-  private def testIsGitHubHttpsUrlNotGitLab: Result =
-    Result.assert(!Install.isGitHubHttpsUrl("https://gitlab.com/owner/repo"))
-
-  private def testIsGitHubHttpsUrlNotSsh: Result =
-    Result.assert(!Install.isGitHubHttpsUrl("git@github.com:owner/repo.git"))
-
-  private def testIsGitHubHttpsUrlNotHttp: Result =
-    Result.assert(!Install.isGitHubHttpsUrl("http://github.com/owner/repo"))
-
-  // gitHubHttpsToSsh tests
-  private def testGitHubHttpsToSshPlain: Result =
-    Install.gitHubHttpsToSsh("https://github.com/owner/repo") ==== "git@github.com:owner/repo.git"
-
-  private def testGitHubHttpsToSshDotGit: Result =
-    Install.gitHubHttpsToSsh("https://github.com/owner/repo.git") ==== "git@github.com:owner/repo.git"
-
-  private def testGitHubHttpsToSshTrailingSlash: Result =
-    Install.gitHubHttpsToSsh("https://github.com/owner/repo/") ==== "git@github.com:owner/repo.git"
-
   // skillLabel tests
   private def testSkillLabelBasic: Result = {
     val label = Install.skillLabel("my-skill", "tools/my-skill", 2048L)
@@ -377,6 +341,7 @@ object InstallSpec extends Properties {
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
         repoUrl = "https://github.com/owner/repo".some,
+        authMethod = GitAuthMethod.Anonymous.some,
         subpath = "path/to/my-skill".some,
         localPath = none[String],
         installedAt = "2026-01-01T00:00:00Z",

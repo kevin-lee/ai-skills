@@ -149,11 +149,40 @@ object SkillSourceType {
   }
 }
 
+/** How a Git repository was successfully accessed. */
+enum GitAuthMethod derives Eq, Show {
+  case Anonymous, Ssh, Gh, CredentialHelper, Interactive
+}
+object GitAuthMethod {
+
+  def render(method: GitAuthMethod): String = method match {
+    case GitAuthMethod.Anonymous => "anonymous"
+    case GitAuthMethod.Ssh => "ssh"
+    case GitAuthMethod.Gh => "gh"
+    case GitAuthMethod.CredentialHelper => "credential-helper"
+    case GitAuthMethod.Interactive => "interactive"
+  }
+
+  def fromString(s: String): Either[String, GitAuthMethod] = s match {
+    case "anonymous" => GitAuthMethod.Anonymous.asRight
+    case "ssh" => GitAuthMethod.Ssh.asRight
+    case "gh" => GitAuthMethod.Gh.asRight
+    case "credential-helper" => GitAuthMethod.CredentialHelper.asRight
+    case "interactive" => GitAuthMethod.Interactive.asRight
+    case other => s"Invalid GitAuthMethod: $other".asLeft
+  }
+
+  given Encoder[GitAuthMethod] = Encoder.encodeString.contramap(render)
+
+  given Decoder[GitAuthMethod] = Decoder.decodeString.emap(fromString)
+}
+
 final case class SkillSourceMetadata private (
   name: Option[String], // For backward compat: existing .aiskills.json without name
   source: String,
   sourceType: SkillSourceType,
   repoUrl: Option[String],
+  authMethod: Option[GitAuthMethod], // None means "no recorded method": run the full fallback chain
   subpath: Option[String], // Canonical: None means the skill is at the repo root
   localPath: Option[String],
   installedAt: String,
@@ -168,6 +197,9 @@ object SkillSourceMetadata {
     def withInstalledAt(at: String): SkillSourceMetadata = skillSourceMetadata.copy(installedAt = at)
 
     def withRepoUrl(url: Option[String]): SkillSourceMetadata = skillSourceMetadata.copy(repoUrl = url)
+
+    def withAuthMethod(method: Option[GitAuthMethod]): SkillSourceMetadata =
+      skillSourceMetadata.copy(authMethod = method)
   }
 
   /** Canonicalize the repo-root subpath. `""`, `"."`, and whitespace-only all mean "repo root",
@@ -181,6 +213,7 @@ object SkillSourceMetadata {
     source: String,
     sourceType: SkillSourceType,
     repoUrl: Option[String],
+    authMethod: Option[GitAuthMethod],
     subpath: Option[String],
     localPath: Option[String],
     installedAt: String,
@@ -190,6 +223,7 @@ object SkillSourceMetadata {
       source,
       sourceType,
       repoUrl,
+      authMethod,
       normalizeSubpath(subpath),
       localPath,
       installedAt,
@@ -207,6 +241,7 @@ object SkillSourceMetadata {
             m.source,
             m.sourceType,
             m.repoUrl,
+            m.authMethod,
             m.subpath,
             m.localPath,
             m.installedAt,
@@ -279,6 +314,7 @@ final case class InstallSourceInfo(
   source: String,
   sourceType: SkillSourceType,
   repoUrl: Option[String],
+  authMethod: Option[GitAuthMethod],
   localRoot: Option[os.Path],
 ) derives Eq,
       Show
