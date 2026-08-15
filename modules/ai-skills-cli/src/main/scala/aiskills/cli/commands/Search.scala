@@ -166,7 +166,7 @@ object Search {
     content: String,
     description: String,
     yamlName: String,
-    actualRepoUrl: String,
+    actualRepoUrl: RepoUrl,
     authMethod: GitAuthMethod,
     tempDir: os.Path,
   )
@@ -181,7 +181,7 @@ object Search {
 
     bySource.toList.flatMap {
       case (source, results) =>
-        val repoUrl = s"https://github.com/$source"
+        val repoUrl = RepoUrl(s"https://github.com/$source")
 
         val tempDir = aiskills.cli.TempDirCleanup.createTempDir()
 
@@ -189,7 +189,7 @@ object Search {
           repoUrl,
           tempDir / "repo",
           preferred = none[GitAuthMethod],
-          allowInteractive = true,
+          interactivity = GitClone.Interactivity.Allowed,
           texts = GitClone.CloneTexts(s"Cloning $source...", s"Cloned $source", s"Failed to clone $source"),
         ) match {
           case Left(_) =>

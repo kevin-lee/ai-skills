@@ -1,6 +1,6 @@
 package aiskills.core.utils
 
-import aiskills.core.{GitAuthMethod, SkillSourceMetadata, SkillSourceType}
+import aiskills.core.{GitAuthMethod, RepoUrl, SkillSourceMetadata, SkillSourceType}
 import cats.syntax.all.*
 import hedgehog.*
 import hedgehog.runner.*
@@ -39,7 +39,7 @@ object SkillMetadataSpec extends Properties {
       val payload = SkillSourceMetadata(
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
-        repoUrl = "https://github.com/owner/repo".some,
+        repoUrl = RepoUrl("https://github.com/owner/repo").some,
         authMethod = none[GitAuthMethod],
         subpath = "skills/demo".some,
         localPath = none[String],
@@ -70,7 +70,7 @@ object SkillMetadataSpec extends Properties {
         name = "renamed-skill".some,
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
-        repoUrl = "https://github.com/owner/repo".some,
+        repoUrl = RepoUrl("https://github.com/owner/repo").some,
         authMethod = none[GitAuthMethod],
         subpath = "skills/demo".some,
         localPath = none[String],
@@ -135,7 +135,7 @@ object SkillMetadataSpec extends Properties {
     SkillSourceMetadata(
       source = "owner/repo",
       sourceType = SkillSourceType.Git,
-      repoUrl = "https://github.com/owner/repo".some,
+      repoUrl = RepoUrl("https://github.com/owner/repo").some,
       authMethod = none[GitAuthMethod],
       subpath = subpath,
       localPath = none[String],
@@ -202,7 +202,7 @@ object SkillMetadataSpec extends Properties {
       val payload = SkillSourceMetadata(
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
-        repoUrl = "https://github.com/owner/repo".some,
+        repoUrl = RepoUrl("https://github.com/owner/repo").some,
         authMethod = GitAuthMethod.Gh.some,
         subpath = "skills/demo".some,
         localPath = none[String],
@@ -238,7 +238,7 @@ object SkillMetadataSpec extends Properties {
           Result.all(
             List(
               r.authMethod ==== none[GitAuthMethod],
-              r.repoUrl ==== "git@github.com:owner/repo.git".some,
+              r.repoUrl ==== RepoUrl("git@github.com:owner/repo.git").some,
             )
           )
         case None => Result.failure.log("Expected Some but got None")

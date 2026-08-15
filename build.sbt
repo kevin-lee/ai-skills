@@ -37,6 +37,9 @@ lazy val core = module("core")
       libs.circeParser.value,
       libs.circeGeneric.value,
       libs.circeYamlScalayaml.value,
+      libs.refined4sCore.value,
+      libs.refined4sCats.value,
+      libs.refined4sCirce.value,
       libs.tests.hedgehogCore.value,
       libs.tests.hedgehogRunner.value,
       libs.tests.hedgehogSbt.value,
@@ -87,6 +90,8 @@ lazy val props = new {
 
   val CirceYamlVersion = "0.16.1"
 
+  val Refined4sVersion = "1.20.0"
+
   val HedgehogVersion = "0.13.0"
 
   val DeclineVersion = "2.6.1"
@@ -116,6 +121,12 @@ lazy val libs = new {
   lazy val circeGeneric = Def.setting("io.circe" %%% "circe-generic" % props.CirceVersion)
 
   lazy val circeYamlScalayaml = Def.setting("io.circe" %%% "circe-yaml-scalayaml" % props.CirceYamlVersion)
+
+  lazy val refined4sCore = Def.setting("io.kevinlee" %%% "refined4s-core" % props.Refined4sVersion)
+
+  lazy val refined4sCats = Def.setting("io.kevinlee" %%% "refined4s-cats" % props.Refined4sVersion)
+
+  lazy val refined4sCirce = Def.setting("io.kevinlee" %%% "refined4s-circe" % props.Refined4sVersion)
 
   lazy val decline = Def.setting("com.monovore" %%% "decline" % props.DeclineVersion)
 
