@@ -3,6 +3,8 @@ import scala.scalanative.build.*
 ThisBuild / scalaVersion := props.ScalaVersion
 ThisBuild / organization := props.Org
 
+ThisBuild / dynverSonatypeSnapshots := true
+
 lazy val aiSkills = project
   .in(file("."))
   .enablePlugins(DevOopsGitHubReleasePlugin)

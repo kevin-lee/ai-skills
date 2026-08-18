@@ -15,25 +15,47 @@ env:
 
 jobs:
 
-  release-version-check:
+  release-precheck:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: "Check release version"
+      - name: "Check release tag and changelog"
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          PROJECT_VERSION=$(cat version.sbt | tr '\n' ' ' | sed -n 's/.*version[[:space:]]*:=[[:space:]]*"\([^"]*\)".*/\1/p')
-          echo "Tag version: ${TAG_VERSION}"
-          echo "Project version: ${PROJECT_VERSION}"
-          if [ "${TAG_VERSION}" != "${PROJECT_VERSION}" ]; then
-            echo "::error::Tag version '${TAG_VERSION}' does not match project version '${PROJECT_VERSION}' in version.sbt"
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          echo "Tag name: ${TAG_NAME}"
+          echo "Version:  ${VERSION}"
+
+          if ! echo "${TAG_NAME}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Tag '${TAG_NAME}' is not in the expected 'vMAJOR.MINOR.PATCH' form."
             exit 1
           fi
 
+          TAG_COMMIT="$(git rev-parse "refs/tags/${TAG_NAME}^{commit}")"
+          HEAD_COMMIT="$(git rev-parse "HEAD^{commit}")"
+          if [ "${TAG_COMMIT}" != "${HEAD_COMMIT}" ]; then
+            echo "::error::Tag '${TAG_NAME}' points at ${TAG_COMMIT} but HEAD is ${HEAD_COMMIT}, so sbt-dynver would not derive '${VERSION}'."
+            exit 1
+          fi
+
+          CHANGELOG="changelogs/${VERSION}.md"
+          if [ ! -f "${CHANGELOG}" ]; then
+            echo "::error::Changelog '${CHANGELOG}' does not exist. Add it to the tagged commit, then delete and re-push the tag."
+            exit 1
+          fi
+          if [ ! -s "${CHANGELOG}" ]; then
+            echo "::error::Changelog '${CHANGELOG}' is empty."
+            exit 1
+          fi
+
+          echo "OK: tag ${TAG_NAME} -> version ${VERSION}, changelog ${CHANGELOG} present"
+
   build:
-    needs: release-version-check
+    needs: release-precheck
 
     runs-on: ${{ matrix.os.value }}
     strategy:
@@ -47,6 +69,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v5
         with:
           java-version: ${{ env.GH_JAVA_VERSION }}
@@ -83,6 +107,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v5
         with:
           java-version: ${{ env.GH_JAVA_VERSION }}
