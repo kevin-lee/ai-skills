@@ -1,6 +1,6 @@
 package aiskills.cli.commands
 
-import aiskills.core.{GitAuthMethod, RepoUrl, SkillSourceMetadata, SkillSourceType}
+import aiskills.core.{GitAuthMethod, GitBranch, InstallSourceInfo, RepoUrl, SkillSourceMetadata, SkillSourceType}
 import aiskills.core.utils.SkillMetadata
 import cats.syntax.all.*
 import hedgehog.*
@@ -9,6 +9,8 @@ import hedgehog.runner.*
 object InstallSpec extends Properties {
 
   override def tests: List[Test] = List(
+    example("branch selection rejects local sources before Git validation", testBranchLocalSources),
+    example("branch selection is recorded only in Git metadata", testBranchMetadata),
     // isLocalPath
     example("isLocalPath: detects absolute paths", testAbsolutePath),
     example("isLocalPath: detects relative paths ./", testRelativePath),
@@ -341,6 +343,7 @@ object InstallSpec extends Properties {
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
         repoUrl = RepoUrl("https://github.com/owner/repo").some,
+        branch = none[GitBranch],
         authMethod = GitAuthMethod.Anonymous.some,
         subpath = "path/to/my-skill".some,
         localPath = none[String],
@@ -401,4 +404,44 @@ object InstallSpec extends Properties {
       )
     )
   }
+  private def testBranchLocalSources: Result          = {
+    Result.all(
+      List("/tmp/skill", "./skill", "../skill", "~/skill", "$HOME/skill").flatMap { source =>
+        List(
+          Install.validateBranchForSource(source, GitBranch("feature/demo").some) ====
+            Left("--branch is only supported for Git sources, not local directories"),
+          Install.validateBranchForSource(source, none[GitBranch]) ==== Right(()),
+        )
+      } ++ List(
+        Install.validateBranchForSource("owner/repo/skills/demo", GitBranch("feature/demo").some) ==== Right(()),
+        Result.assert(Install.validateBranchForSource("owner/repo", GitBranch("bad branch").some).isLeft),
+      )
+    )
+  }
+
+  private def testBranchMetadata: Result = {
+    val sourceInfo  = InstallSourceInfo(
+      "owner/repo/skills/demo",
+      SkillSourceType.Git,
+      RepoUrl("https://github.com/owner/repo").some,
+      GitBranch("feature/New-Skill").some,
+      GitAuthMethod.Ssh.some,
+      none[os.Path]
+    )
+    val selected    = Install.buildGitMetadata(sourceInfo, "skills/demo")
+    val reinstalled = Install.buildGitMetadata(sourceInfo.copy(branch = none[GitBranch]), "skills/demo")
+    val local       = Install.buildLocalMetadata(sourceInfo.copy(sourceType = SkillSourceType.Local), os.pwd / "skill")
+    Result.all(
+      List(
+        selected.branch ==== sourceInfo.branch,
+        selected.source ==== sourceInfo.source,
+        selected.repoUrl ==== sourceInfo.repoUrl,
+        selected.subpath ==== "skills/demo".some,
+        reinstalled.branch ==== none[GitBranch],
+        local.branch ==== none[GitBranch],
+        local.repoUrl ==== none[RepoUrl],
+      )
+    )
+  }
+
 }

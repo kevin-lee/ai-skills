@@ -1,11 +1,12 @@
 package aiskills.cli.commands
 
-import aiskills.core.{GitAuthMethod, GitHubOwnerRepo, RepoUrl}
+import aiskills.core.{GitAuthMethod, GitBranch, GitHubOwnerRepo, RepoUrl}
 import cats.*
 import cats.derived.*
 import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
+import aiskills.cli.CliSpinner
 import just.spinner.*
 
 import scala.annotation.tailrec
@@ -99,6 +100,47 @@ object GitClone {
         Show
 
   final case class CloneTexts(cloning: String, cloned: String, failed: String)
+
+  final case class CloneRequest(
+    repoUrl: RepoUrl,
+    targetPath: os.Path,
+    branch: Option[GitBranch],
+    preferred: Option[GitAuthMethod],
+    interactivity: Interactivity,
+    texts: CloneTexts,
+  )
+
+  enum CloneError derives Eq, Show {
+    case Failed(failure: CloneFailure)
+    case MissingBranch(branch: GitBranch, strategy: CloneStrategy)
+    case InvalidBranch(branch: GitBranch, detail: String)
+  }
+
+  private[commands] enum CloneAttemptError derives Eq, Show {
+    case MissingBranch(branch: GitBranch)
+    case Failed(detail: String)
+  }
+
+  private[commands] enum AttemptChainResult derives Eq, Show {
+    case Succeeded(strategy: CloneStrategy)
+    case MissingBranch(branch: GitBranch, strategy: CloneStrategy)
+    case Exhausted(attempts: List[CloneAttempt])
+  }
+
+  def validateBranch(branch: GitBranch): Either[String, Unit] = {
+    if (branch.value.isEmpty || branch.value.contains("@{")) {
+      s"Invalid Git branch '${branch.value}'".asLeft
+    } else {
+      Try(
+        os.proc("git", "check-ref-format", "--branch", branch.value)
+          .call(stdout = os.Pipe, stderr = os.Pipe, check = false)
+      ) match {
+        case Success(result) =>
+          Either.cond(result.exitCode === 0, (), s"Invalid Git branch '${branch.value}': ${result.err.text().trim}")
+        case Failure(ex) => s"Could not execute Git to validate branch '${branch.value}': ${errorTextOf(ex)}".asLeft
+      }
+    }
+  }
 
   /** Build the ordered list of attempts for a repo URL. Pure: capabilities are passed in. */
   def buildStrategies(
@@ -217,36 +259,115 @@ object GitClone {
     then CredentialHelperStatus.Configured
     else CredentialHelperStatus.NotConfigured
 
-  private def runGitClone(strategy: CloneStrategy, targetPath: os.Path): Try[Unit] = {
-    val configArgs = strategy.credentialHelper match {
-      case CredentialHelperMode.Disabled => List("-c", "credential.helper=")
-      case CredentialHelperMode.Default => List.empty[String]
-      // the empty value first clears any inherited helper, so gh is the only one asked
-      case CredentialHelperMode.GhCli =>
-        List("-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential")
+  private def gitConfigArgs(strategy: CloneStrategy): List[String] = strategy.credentialHelper match {
+    case CredentialHelperMode.Disabled => List("-c", "credential.helper=")
+    case CredentialHelperMode.Default => List.empty[String]
+    case CredentialHelperMode.GhCli =>
+      List("-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential")
+  }
+
+  private def gitEnvironment(strategy: CloneStrategy): Map[String, String] = strategy.terminalPrompt match {
+    case TerminalPrompt.Allowed => Map.empty[String, String]
+    case TerminalPrompt.Suppressed => Map("GIT_TERMINAL_PROMPT" -> "0")
+  }
+
+  private[commands] def classifyBranchProbe(
+    branch: GitBranch,
+    exitCode: Int,
+    stdout: String,
+    stderr: String,
+  ): Either[CloneAttemptError, Unit] = {
+    val reference    = s"refs/heads/${branch.value}"
+    val records      = stdout.linesIterator.filter(_.nonEmpty).toList
+    val validRecords = records.forall { line =>
+      line.split("\t", -1).toList match {
+        case objectId :: ref :: Nil =>
+          objectId.nonEmpty && objectId.forall(c => c.isDigit || "abcdefABCDEF".contains(c)) && ref === reference
+        case _ => false
+      }
     }
-
-    val env = strategy.terminalPrompt match {
-      case TerminalPrompt.Allowed => Map.empty[String, String]
-      case TerminalPrompt.Suppressed => Map("GIT_TERMINAL_PROMPT" -> "0")
+    exitCode match {
+      case 2 => CloneAttemptError.MissingBranch(branch).asLeft
+      case 0 if records.nonEmpty && validRecords => ().asRight
+      case 0 =>
+        CloneAttemptError.Failed(s"Could not verify branch '${branch.value}' from Git's reference output").asLeft
+      case other => CloneAttemptError.Failed(s"Branch lookup failed (exit $other): ${stderr.trim}").asLeft
     }
+  }
 
-    val command = os.proc("git", configArgs, "clone", "--depth", "1", "--quiet", strategy.url.value, targetPath)
-
-    val attempted =
-      if strategy.method === GitAuthMethod.Interactive then Try(
-        command.call(env = env, stdin = os.Inherit, stdout = os.Inherit, stderr = os.Inherit)
+  private def probeBranch(strategy: CloneStrategy, branch: GitBranch): Either[CloneAttemptError, Unit] = {
+    Try(
+      os.proc(
+        "git",
+        gitConfigArgs(strategy),
+        "ls-remote",
+        "--exit-code",
+        "--refs",
+        "--",
+        strategy.url.value,
+        s"refs/heads/${branch.value}"
+      ).call(
+        env = gitEnvironment(strategy),
+        stdin = if (strategy.method === GitAuthMethod.Interactive) os.Inherit else os.Pipe,
+        stdout = os.Pipe,
+        stderr = os.Pipe,
+        check = false
       )
-      else
-        Try(command.call(env = env, stderr = os.Pipe))
+    ).toEither
+      .left
+      .map(ex => CloneAttemptError.Failed(errorTextOf(ex)))
+      .flatMap(result => classifyBranchProbe(branch, result.exitCode, result.out.text(), result.err.text()))
+  }
 
-    attempted.transform(
-      _ => Success(()),
-      ex => {
-        if os.exists(targetPath) then os.remove.all(targetPath) else ()
-        Failure(ex)
-      },
-    )
+  private[commands] def runGitClone(
+    strategy: CloneStrategy,
+    targetPath: os.Path,
+    branch: Option[GitBranch],
+  ): Either[CloneAttemptError, Unit] = {
+    val probe = branch.fold(().asRight[CloneAttemptError])(probeBranch(strategy, _))
+    probe.flatMap { _ =>
+      val branchArgs = branch.toList.flatMap(b => List("--branch", b.value))
+      val command    = os.proc(
+        "git",
+        gitConfigArgs(strategy),
+        "clone",
+        "--depth",
+        "1",
+        "--quiet",
+        branchArgs,
+        "--",
+        strategy.url.value,
+        targetPath
+      )
+      val attempted  = Try {
+        val _ = if (strategy.method === GitAuthMethod.Interactive) {
+          command.call(env = gitEnvironment(strategy), stdin = os.Inherit, stdout = os.Inherit, stderr = os.Inherit)
+        } else {
+          command.call(env = gitEnvironment(strategy), stderr = os.Pipe)
+        }
+      }.toEither.left.map(ex => CloneAttemptError.Failed(errorTextOf(ex)))
+      val verified   = attempted.flatMap { _ =>
+        branch.fold(().asRight[CloneAttemptError]) { selected =>
+          Try(
+            os.proc("git", "symbolic-ref", "--quiet", "HEAD").call(cwd = targetPath, stdout = os.Pipe, stderr = os.Pipe)
+          ).toEither
+            .left
+            .map(ex => CloneAttemptError.Failed(errorTextOf(ex)))
+            .flatMap(result =>
+              Either.cond(
+                result.out.text().trim === s"refs/heads/${selected.value}",
+                (),
+                CloneAttemptError.Failed(s"Clone did not check out branch '${selected.value}'")
+              )
+            )
+        }
+      }
+      verified.left.map { error =>
+        if (os.exists(targetPath)) { os.remove.all(targetPath) }
+        else { () }
+        error
+      }
+    }
   }
 
   /** Last non-empty line of the subprocess stderr, falling back to the exception message. */
@@ -266,17 +387,26 @@ object GitClone {
   }
 
   @tailrec
-  private def attemptEach(
+  private[commands] def attemptEach(
     strategies: List[CloneStrategy],
     targetPath: os.Path,
+    branch: Option[GitBranch],
     attempts: List[CloneAttempt],
-  ): Either[List[CloneAttempt], CloneStrategy] = strategies match {
-    case Nil => attempts.reverse.asLeft
+    runAttempt: (CloneStrategy, os.Path, Option[GitBranch]) => Either[CloneAttemptError, Unit],
+  ): AttemptChainResult = strategies match {
+    case Nil => AttemptChainResult.Exhausted(attempts.reverse)
     case strategy :: rest =>
-      runGitClone(strategy, targetPath) match {
-        case Success(_) => strategy.asRight
-        case Failure(ex) =>
-          attemptEach(rest, targetPath, CloneAttempt(strategy.method, strategy.url, errorTextOf(ex)) :: attempts)
+      runAttempt(strategy, targetPath, branch) match {
+        case Right(_) => AttemptChainResult.Succeeded(strategy)
+        case Left(CloneAttemptError.MissingBranch(selected)) => AttemptChainResult.MissingBranch(selected, strategy)
+        case Left(CloneAttemptError.Failed(detail)) =>
+          attemptEach(
+            rest,
+            targetPath,
+            branch,
+            CloneAttempt(strategy.method, strategy.url, detail) :: attempts,
+            runAttempt
+          )
       }
   }
 
@@ -289,34 +419,40 @@ object GitClone {
   def cloneWithFallback(
     repoUrl: RepoUrl,
     targetPath: os.Path,
+    branch: Option[GitBranch],
     preferred: Option[GitAuthMethod],
     interactivity: Interactivity,
-  ): Either[CloneFailure, CloneSuccess] = {
-    val isGitHub       = gitHubOwnerRepo(repoUrl).isDefined
-    val helperEligible = isGitHub || isHttpUrl(repoUrl)
-
-    val caps = CloneCapabilities(
-      ghCli = if isGitHub then detectGhAvailable() else GhCliStatus.Unavailable,
-      credentialHelper =
-        if helperEligible then detectCredentialHelperConfigured() else CredentialHelperStatus.NotConfigured,
-      interactivity = interactivity match {
-        case Interactivity.Allowed => if isStdinTty then Interactivity.Allowed else Interactivity.NotAllowed
-        case Interactivity.NotAllowed => Interactivity.NotAllowed
-      },
-    )
-
-    val strategies = buildStrategies(repoUrl, caps, preferred)
-
-    attemptEach(strategies.filter(_.method =!= GitAuthMethod.Interactive), targetPath, List.empty[CloneAttempt]) match {
-      case Right(strategy) =>
-        CloneSuccess(canonicalUrlOf(repoUrl), strategy.method).asRight
-
-      case Left(attempts) =>
-        CloneFailure(
-          attempts,
-          caps,
-          strategies.find(_.method === GitAuthMethod.Interactive).map(_.url),
-        ).asLeft
+  ): Either[CloneError, CloneSuccess] = {
+    val validation = branch.fold(().asRight[CloneError]) { selected =>
+      validateBranch(selected).left.map(detail => CloneError.InvalidBranch(selected, detail))
+    }
+    validation.flatMap { _ =>
+      val isGitHub       = gitHubOwnerRepo(repoUrl).isDefined
+      val helperEligible = isGitHub || isHttpUrl(repoUrl)
+      val caps           = CloneCapabilities(
+        ghCli = if (isGitHub) detectGhAvailable() else GhCliStatus.Unavailable,
+        credentialHelper =
+          if (helperEligible) detectCredentialHelperConfigured() else CredentialHelperStatus.NotConfigured,
+        interactivity = interactivity match {
+          case Interactivity.Allowed => if (isStdinTty) Interactivity.Allowed else Interactivity.NotAllowed
+          case Interactivity.NotAllowed => Interactivity.NotAllowed
+        },
+      )
+      val strategies     = buildStrategies(repoUrl, caps, preferred)
+      attemptEach(
+        strategies.filter(_.method =!= GitAuthMethod.Interactive),
+        targetPath,
+        branch,
+        List.empty[CloneAttempt],
+        runGitClone
+      ) match {
+        case AttemptChainResult.Succeeded(strategy) => CloneSuccess(canonicalUrlOf(repoUrl), strategy.method).asRight
+        case AttemptChainResult.MissingBranch(selected, strategy) => CloneError.MissingBranch(selected, strategy).asLeft
+        case AttemptChainResult.Exhausted(attempts) =>
+          CloneError
+            .Failed(CloneFailure(attempts, caps, strategies.find(_.method === GitAuthMethod.Interactive).map(_.url)))
+            .asLeft
+      }
     }
   }
 
@@ -372,64 +508,65 @@ object GitClone {
   /** Clone with a spinner, an explanation of every method that was tried, and - on a terminal -
     * the option to let git ask for a username/password as a last resort.
     */
-  def cloneRepoWithUi(
-    repoUrl: RepoUrl,
-    targetPath: os.Path,
-    preferred: Option[GitAuthMethod],
-    interactivity: Interactivity,
-    texts: CloneTexts,
-  ): Either[CloneFailure, CloneSuccess] = {
-    val spinner = Spinner.createDefaultSideEffect(
-      SpinnerConfig
-        .default
-        .withText(texts.cloning)
-        .withColor(Color.cyan)
-        .withIndent(2),
+  def cloneRepoWithUi(request: CloneRequest): Either[CloneError, CloneSuccess] = {
+    val spinner = CliSpinner.createDefaultSideEffect(
+      SpinnerConfig.default.withText(request.texts.cloning).withColor(Color.cyan).withIndent(2),
     )
     val _       = spinner.start()
-
-    cloneWithFallback(repoUrl, targetPath, preferred, interactivity) match {
+    cloneWithFallback(
+      request.repoUrl,
+      request.targetPath,
+      request.branch,
+      request.preferred,
+      request.interactivity
+    ) match {
       case Right(success) =>
-        val _ = spinner.succeed(texts.cloned.some)
+        val _ = spinner.succeed(request.texts.cloned.some)
         success.asRight
-
-      case Left(failure) =>
-        val _ = spinner.fail(texts.failed.some)
-        printAttemptReport(repoUrl, failure)
-
-        failure.interactiveUrl match {
-          case None =>
-            printFinalTip()
-            failure.asLeft
-
-          case Some(httpsUrl) =>
-            println("SSH, gh, and credential helper access all failed or are unavailable.".yellow)
-            askTryUserPassword() match {
-              case InteractiveCloneChoice.Abort =>
+      case Left(error) =>
+        val _ = spinner.fail(request.texts.failed.some)
+        error match {
+          case CloneError.MissingBranch(branch, _) =>
+            println(s"Branch '${branch.value}' does not exist in ${request.repoUrl.value}".yellow)
+            error.asLeft
+          case CloneError.InvalidBranch(_, detail) =>
+            println(detail.red)
+            error.asLeft
+          case CloneError.Failed(failure) =>
+            printAttemptReport(request.repoUrl, failure)
+            failure.interactiveUrl match {
+              case None =>
                 printFinalTip()
-                failure.asLeft
-
-              case InteractiveCloneChoice.Proceed =>
-                runGitClone(
-                  CloneStrategy(
-                    GitAuthMethod.Interactive,
-                    httpsUrl,
-                    CredentialHelperMode.Default,
-                    TerminalPrompt.Allowed,
-                  ),
-                  targetPath,
-                ) match {
-                  case Success(_) =>
-                    println(texts.cloned.green)
-                    CloneSuccess(canonicalUrlOf(repoUrl), GitAuthMethod.Interactive).asRight
-
-                  case Failure(ex) =>
+                error.asLeft
+              case Some(httpsUrl) =>
+                println("SSH, gh, and credential helper access all failed or are unavailable.".yellow)
+                askTryUserPassword() match {
+                  case InteractiveCloneChoice.Abort =>
                     printFinalTip()
-                    failure
-                      .copy(attempts =
-                        failure.attempts :+ CloneAttempt(GitAuthMethod.Interactive, httpsUrl, errorTextOf(ex))
-                      )
-                      .asLeft
+                    error.asLeft
+                  case InteractiveCloneChoice.Proceed =>
+                    val strategy = CloneStrategy(
+                      GitAuthMethod.Interactive,
+                      httpsUrl,
+                      CredentialHelperMode.Default,
+                      TerminalPrompt.Allowed
+                    )
+                    runGitClone(strategy, request.targetPath, request.branch) match {
+                      case Right(_) =>
+                        println(request.texts.cloned.green)
+                        CloneSuccess(canonicalUrlOf(request.repoUrl), GitAuthMethod.Interactive).asRight
+                      case Left(CloneAttemptError.MissingBranch(branch)) =>
+                        println(s"Branch '${branch.value}' does not exist in ${request.repoUrl.value}".yellow)
+                        CloneError.MissingBranch(branch, strategy).asLeft
+                      case Left(CloneAttemptError.Failed(detail)) =>
+                        printFinalTip()
+                        CloneError
+                          .Failed(
+                            failure
+                              .copy(attempts = failure.attempts :+ CloneAttempt(strategy.method, strategy.url, detail))
+                          )
+                          .asLeft
+                    }
                 }
             }
         }

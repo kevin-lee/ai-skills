@@ -131,6 +131,21 @@ cp modules/ai-skills-cli/target/scala-3.8.3/aiskills /usr/local/bin/aiskills
 
 ## Please visit the website for a usage guide: https://ai-skills.kevinly.dev
 
+## Installing from a branch
+
+Use `--branch` to install from a named Git branch, including branches containing `/`:
+
+```bash
+aiskills install Org/Repo --branch develop
+aiskills install Org/Repo/skills/my-skill --branch feature/new-skill
+```
+
+This option also works with full Git repository addresses. It does not apply to local directories or select tags or commits.
+
+The selected branch is recorded in `.aiskills.json`, and `aiskills update` keeps following it. If Git confirms that the branch is missing, an interactive update asks whether to switch the affected installations to the repository's current default branch. Without terminal input, the update is skipped and the selection is retained. Authentication and network failures do not trigger a switch.
+
+Accepting the switch clears the recorded branch only for skills successfully updated from the default branch. It changes local tracking metadata and does not delete a remote branch. To return to default-branch tracking while the named branch still exists, reinstall without `--branch` and choose to overwrite the existing skill. Skipping the overwrite keeps the existing selection.
+
 ## Skill Format
 
 Each skill is a directory containing a `SKILL.md` file with YAML frontmatter:

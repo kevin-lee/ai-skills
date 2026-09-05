@@ -17,6 +17,7 @@ import aiskills.core.given
 import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
+import aiskills.cli.CliSpinner
 import just.spinner.*
 
 import scala.util.Try
@@ -71,7 +72,7 @@ object Search {
   private def runMarketplaceSearch(query: String): Unit = {
     println(s"Searching marketplaces for: ${query.cyan.bold}\n")
 
-    val spinner = Spinner.createDefaultSideEffect(
+    val spinner = CliSpinner.createDefaultSideEffect(
       SpinnerConfig
         .default
         .withText("Searching skills.sh and agentskill.sh...")
@@ -186,11 +187,14 @@ object Search {
         val tempDir = aiskills.cli.TempDirCleanup.createTempDir()
 
         GitClone.cloneRepoWithUi(
-          repoUrl,
-          tempDir / "repo",
-          preferred = none[GitAuthMethod],
-          interactivity = GitClone.Interactivity.Allowed,
-          texts = GitClone.CloneTexts(s"Cloning $source...", s"Cloned $source", s"Failed to clone $source"),
+          GitClone.CloneRequest(
+            repoUrl,
+            tempDir / "repo",
+            branch = none[GitBranch],
+            preferred = none[GitAuthMethod],
+            interactivity = GitClone.Interactivity.Allowed,
+            texts = GitClone.CloneTexts(s"Cloning $source...", s"Cloned $source", s"Failed to clone $source"),
+          )
         ) match {
           case Left(_) =>
             System.err.println(s"Could not clone repository: $source".red)
@@ -291,6 +295,7 @@ object Search {
         source = c.result.source,
         sourceType = SkillSourceType.Git,
         repoUrl = c.actualRepoUrl.some,
+        branch = none[GitBranch],
         authMethod = c.authMethod.some,
         localRoot = none[os.Path],
       )

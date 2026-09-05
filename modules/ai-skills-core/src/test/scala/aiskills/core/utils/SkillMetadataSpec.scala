@@ -1,13 +1,17 @@
 package aiskills.core.utils
 
-import aiskills.core.{GitAuthMethod, RepoUrl, SkillSourceMetadata, SkillSourceType}
+import aiskills.core.{GitAuthMethod, GitBranch, RepoUrl, SkillSourceMetadata, SkillSourceType}
 import cats.syntax.all.*
+import io.circe.parser.decode
+import io.circe.syntax.*
 import hedgehog.*
 import hedgehog.runner.*
 
 object SkillMetadataSpec extends Properties {
 
   override def tests: List[Test] = List(
+    example("branch metadata round-trip preserves selection and existing fields", testBranchRoundTrip),
+    example("absent and null branch metadata track the default branch", testDefaultBranchMetadata),
     example("writes and reads metadata", testWriteAndRead),
     example("writes and reads metadata with name", testWriteAndReadWithName),
     example("reads legacy metadata without name as None", testLegacyMetadataWithoutName),
@@ -40,6 +44,7 @@ object SkillMetadataSpec extends Properties {
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
         repoUrl = RepoUrl("https://github.com/owner/repo").some,
+        branch = none[GitBranch],
         authMethod = none[GitAuthMethod],
         subpath = "skills/demo".some,
         localPath = none[String],
@@ -71,6 +76,7 @@ object SkillMetadataSpec extends Properties {
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
         repoUrl = RepoUrl("https://github.com/owner/repo").some,
+        branch = none[GitBranch],
         authMethod = none[GitAuthMethod],
         subpath = "skills/demo".some,
         localPath = none[String],
@@ -136,6 +142,7 @@ object SkillMetadataSpec extends Properties {
       source = "owner/repo",
       sourceType = SkillSourceType.Git,
       repoUrl = RepoUrl("https://github.com/owner/repo").some,
+      branch = none[GitBranch],
       authMethod = none[GitAuthMethod],
       subpath = subpath,
       localPath = none[String],
@@ -203,6 +210,7 @@ object SkillMetadataSpec extends Properties {
         source = "owner/repo",
         sourceType = SkillSourceType.Git,
         repoUrl = RepoUrl("https://github.com/owner/repo").some,
+        branch = none[GitBranch],
         authMethod = GitAuthMethod.Gh.some,
         subpath = "skills/demo".some,
         localPath = none[String],
@@ -255,4 +263,30 @@ object SkillMetadataSpec extends Properties {
 
   private def testGitAuthMethodUnknown: Result =
     GitAuthMethod.fromString("carrier-pigeon") ==== "Invalid GitAuthMethod: carrier-pigeon".asLeft[GitAuthMethod]
+  private def testBranchRoundTrip: Result      = {
+    val original = metadataWithSubpath("skills/demo".some)
+      .withName("renamed")
+      .withAuthMethod(GitAuthMethod.Ssh.some)
+    val selected = original.withBranch(GitBranch("feature/New-Skill").some)
+    Result.all(
+      List(
+        decode[SkillSourceMetadata](selected.asJson.noSpaces) ==== Right(selected),
+        selected.asJson.hcursor.get[String]("branch") ==== Right("feature/New-Skill"),
+        selected.withBranch(none[GitBranch]) ==== original,
+      )
+    )
+  }
+
+  private def testDefaultBranchMetadata: Result = {
+    val metadata      = metadataWithSubpath(none[String])
+    val withoutBranch = metadata.asJson.mapObject(_.remove("branch"))
+    Result.all(
+      List(
+        decode[SkillSourceMetadata](withoutBranch.noSpaces) ==== Right(metadata),
+        decode[SkillSourceMetadata](metadata.asJson.noSpaces) ==== Right(metadata),
+        metadata.asJson.hcursor.get[Option[String]]("branch") ==== Right(None),
+      )
+    )
+  }
+
 }

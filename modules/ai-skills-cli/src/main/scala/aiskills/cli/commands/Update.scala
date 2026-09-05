@@ -1,11 +1,157 @@
 package aiskills.cli.commands
 
-import aiskills.core.{RepoUrl, SkillSourceType}
+import aiskills.core.{*, given}
+import GitClone.{CloneError, CloneRequest, CloneSuccess, Interactivity}
+import cats.*
+import cats.derived.*
+import cue4s.*
+import scala.util.Try
 import aiskills.core.utils.{Dirs, SkillMetadata, SkillNames, Skills, Yaml}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
 object Update {
+
+  final case class RepoBranchKey(repo: String, branch: Option[GitBranch]) derives Eq, Show
+
+  enum SwitchBranchChoice derives Eq, Show {
+    case KeepBranch, UseDefaultBranch
+  }
+
+  final case class ResolvedUpdateSource(cloned: CloneSuccess, branch: Option[GitBranch]) derives Eq, Show
+
+  enum UpdateSourceError derives Eq, Show {
+    case CloneFailed(error: CloneError)
+    case BranchRetained(branch: GitBranch)
+  }
+
+  enum GitUpdateError derives Eq, Show {
+    case PreparationFailed(detail: String)
+    case ReplacementFailed(detail: String)
+    case RollbackFailed(backupPath: os.Path, detail: String)
+  }
+
+  private[commands] def groupGitSkills(
+    skills: List[(Skill, SkillSourceMetadata)],
+  ): Map[RepoBranchKey, List[(Skill, SkillSourceMetadata)]] = {
+    skills.groupBy { case (_, meta) => RepoBranchKey(meta.repoUrl.fold("")(normalizeRepoUrl), meta.branch) }
+  }
+
+  private[commands] def resolveUpdateSource(
+    request: CloneRequest,
+    labels: List[String],
+    clone: CloneRequest => Either[CloneError, CloneSuccess],
+    askSwitch: (RepoUrl, GitBranch, List[String]) => SwitchBranchChoice,
+  ): Either[UpdateSourceError, ResolvedUpdateSource] = {
+    clone(request) match {
+      case Right(cloned) => ResolvedUpdateSource(cloned, request.branch).asRight
+      case Left(error @ (CloneError.Failed(_) | CloneError.InvalidBranch(_, _))) =>
+        UpdateSourceError.CloneFailed(error).asLeft
+      case Left(CloneError.MissingBranch(branch, strategy)) =>
+        val choice = request.interactivity match {
+          case Interactivity.NotAllowed => SwitchBranchChoice.KeepBranch
+          case Interactivity.Allowed => askSwitch(request.repoUrl, branch, labels)
+        }
+        choice match {
+          case SwitchBranchChoice.KeepBranch => UpdateSourceError.BranchRetained(branch).asLeft
+          case SwitchBranchChoice.UseDefaultBranch =>
+            val fallback = request.copy(
+              targetPath = request.targetPath / os.up / "default-repo",
+              branch = none[GitBranch],
+              preferred = strategy.method.some,
+              texts = GitClone.CloneTexts(
+                s"Cloning ${request.repoUrl.value} (default branch)...",
+                s"Cloned: ${request.repoUrl.value} (default branch)",
+                s"Clone failed: ${request.repoUrl.value} (default branch)"
+              ),
+            )
+            clone(fallback)
+              .left
+              .map(UpdateSourceError.CloneFailed(_))
+              .map(cloned => ResolvedUpdateSource(cloned, none[GitBranch]))
+        }
+    }
+  }
+
+  private def askSwitchToDefaultBranch(
+    repoUrl: RepoUrl,
+    branch: GitBranch,
+    labels: List[String]
+  ): SwitchBranchChoice = {
+    println(s"Repository: ${repoUrl.value}")
+    labels.foreach(label => println(s"  $label"))
+    val keep   = "Keep branch - skip these updates"
+    val switch = "Switch to default branch"
+    aiskills.cli.SigintHandler.install()
+    Prompts.sync.use { prompts =>
+      prompts.singleChoice(
+        s"Branch '${branch.value}' no longer exists. Switch these installations to the repository's default branch for this and future updates?",
+        List(keep, switch),
+      ) match {
+        case Completion.Finished(selected) =>
+          if (selected === switch) SwitchBranchChoice.UseDefaultBranch else SwitchBranchChoice.KeepBranch
+        case Completion.Fail(CompletionError.Interrupted) =>
+          println("Cancelled - keeping the recorded branch".yellow)
+          SwitchBranchChoice.KeepBranch
+        case Completion.Fail(CompletionError.Error(_)) => SwitchBranchChoice.KeepBranch
+      }
+    }
+  }
+
+  private def failureDetail(ex: Throwable): String = Option(ex.getMessage).getOrElse(ex.toString)
+
+  private[commands] def replaceGitUpdate(
+    targetPath: os.Path,
+    candidate: os.Path,
+    backup: os.Path,
+    move: (os.Path, os.Path) => Either[String, Unit],
+  ): Either[GitUpdateError, Unit] = {
+    move(targetPath, backup).left.map(GitUpdateError.ReplacementFailed(_)).flatMap { _ =>
+      move(candidate, targetPath) match {
+        case Right(_) => ().asRight
+        case Left(detail) =>
+          move(backup, targetPath) match {
+            case Right(_) => GitUpdateError.ReplacementFailed(detail).asLeft
+            case Left(rollbackDetail) =>
+              GitUpdateError.RollbackFailed(backup, s"$detail. Rollback failed: $rollbackDetail").asLeft
+          }
+      }
+    }
+  }
+
+  private[commands] def installGitUpdate(
+    targetPath: os.Path,
+    sourceDir: os.Path,
+    metadata: SkillSourceMetadata,
+  ): Either[GitUpdateError, Unit] = {
+    val staging = Try(os.Path(java.nio.file.Files.createTempDirectory((targetPath / os.up).toNIO, ".aiskills-update-")))
+      .toEither
+      .left
+      .map(ex => GitUpdateError.PreparationFailed(failureDetail(ex)))
+    staging.flatMap { stage =>
+      val candidate = stage / "candidate"
+      val backup    = stage / "backup"
+      val prepared  = Try {
+        os.copy(sourceDir, candidate)
+        reapplyRename(candidate, metadata)
+        SkillMetadata.writeSkillMetadata(candidate, metadata)
+      }.toEither.left.map(ex => GitUpdateError.PreparationFailed(failureDetail(ex)))
+      val result    = prepared.flatMap { _ =>
+        replaceGitUpdate(
+          targetPath,
+          candidate,
+          backup,
+          (from, to) => Try(os.move(from, to)).toEither.left.map(failureDetail)
+        )
+      }
+      result match {
+        case Left(GitUpdateError.RollbackFailed(_, _)) => ()
+        case Left(GitUpdateError.PreparationFailed(_) | GitUpdateError.ReplacementFailed(_)) | Right(_) =>
+          val _ = Try(os.remove.all(stage))
+      }
+      result
+    }
+  }
 
   /** Update installed skills from their recorded source metadata. */
   def updateSkills(skillNames: List[String]): Unit = {
@@ -36,6 +182,9 @@ object Update {
         val missingRepoUrl        = List.newBuilder[String]
         val missingRepoSkillFile  = List.newBuilder[(String, String)]
         val cloneFailures         = List.newBuilder[String]
+        val retainedBranches      = List.newBuilder[String]
+        val updateFailures        = List.newBuilder[String]
+        val interactivity         = if (GitClone.isStdinTty) Interactivity.Allowed else Interactivity.NotAllowed
 
         aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
 
@@ -91,12 +240,9 @@ object Update {
             }
         }
 
-        // Phase 4: Group git skills by normalized repo URL and clone each repo once
+        // Phase 4: Clone each selected repository and branch group.
         if gitWithUrl.nonEmpty then {
-          val groupedByRepo = gitWithUrl.groupBy {
-            case (_, meta) =>
-              meta.repoUrl.fold("")(normalizeRepoUrl)
-          }
+          val groupedByRepo = groupGitSkills(gitWithUrl)
 
           val parentTempDir = aiskills.cli.TempDirCleanup.createTempDir()
 
@@ -116,50 +262,71 @@ object Update {
                       case (_, meta) if meta.authMethod.isDefined => meta.authMethod
                     }.flatten
 
-                    GitClone.cloneRepoWithUi(
-                      cloneUrl,
-                      repoSubDir / "repo",
+                    val branchLabel = firstMeta.branch.fold("default branch")(b => s"branch: ${b.value}")
+                    val request     = CloneRequest(
+                      repoUrl = cloneUrl,
+                      targetPath = repoSubDir / "repo",
+                      branch = firstMeta.branch,
                       preferred = preferred,
-                      interactivity = GitClone.Interactivity.Allowed,
+                      interactivity = interactivity,
                       texts = GitClone.CloneTexts(
-                        s"Cloning ${cloneUrl.value}$skillsLabel...",
-                        s"Cloned: ${cloneUrl.value}$skillsLabel",
-                        s"Clone failed: ${cloneUrl.value}",
+                        s"Cloning ${cloneUrl.value} ($branchLabel)$skillsLabel...",
+                        s"Cloned: ${cloneUrl.value} ($branchLabel)$skillsLabel",
+                        s"Clone failed: ${cloneUrl.value} ($branchLabel)",
                       ),
-                    ) match {
-                      case Left(_) =>
+                    )
+                    val labels      = groupSkills.map {
+                      case (skill, _) =>
+                        s"${skill.name} (${skill.agent.toString}, ${skill.location.toString.toLowerCase}): ${skill.path}"
+                    }
+                    resolveUpdateSource(request, labels, GitClone.cloneRepoWithUi, askSwitchToDefaultBranch) match {
+                      case Left(UpdateSourceError.BranchRetained(branch)) =>
+                        groupSkills.foreach {
+                          case (skill, _) =>
+                            println(
+                              s"Skipped: ${skill.name} (branch '${branch.value}' missing - selection retained)".yellow
+                            )
+                            retainedBranches += skill.name
+                        }
+                      case Left(UpdateSourceError.CloneFailed(_)) =>
                         groupSkills.foreach {
                           case (skill, _) =>
                             println(s"Skipped: ${skill.name} (git clone failed)".yellow)
                             cloneFailures += skill.name
                         }
-
-                      case Right(cloned) =>
-                        val repoDir = repoSubDir / "repo"
-
+                      case Right(resolved) =>
+                        val repoDir =
+                          if (resolved.branch === request.branch) request.targetPath else repoSubDir / "default-repo"
                         groupSkills.foreach {
                           case (skill, meta) =>
-                            val subpath   = meta.subpath
-                            val sourceDir = subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
-
-                            if !os.exists(sourceDir / "SKILL.md") then {
+                            val sourceDir = meta.subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
+                            if (!os.exists(sourceDir / "SKILL.md")) {
                               println(
-                                s"Skipped: ${skill.name} (SKILL.md not found in repo at ${subpath.getOrElse(".")})".yellow
+                                s"Skipped: ${skill.name} (SKILL.md not found in repo at ${meta.subpath.getOrElse(".")})".yellow
                               )
-                              missingRepoSkillFile += skill.name -> subpath.getOrElse(".")
+                              missingRepoSkillFile += skill.name -> meta.subpath.getOrElse(".")
                             } else {
-                              updateSkillFromDir(skill.path, sourceDir)
-                              val updatedMeta =
-                                meta
-                                  .withRepoUrl(cloned.url.some)
-                                  .withAuthMethod(cloned.method.some)
-                                  .withInstalledAt(aiskills.core.utils.isoNow())
-                              SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
-                              reapplyRename(skill.path, updatedMeta)
-                              val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)
-                              println(
-                                s"\u2705 Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
-                              )
+                              val updatedMeta = meta
+                                .withRepoUrl(resolved.cloned.url.some)
+                                .withAuthMethod(resolved.cloned.method.some)
+                                .withBranch(resolved.branch)
+                                .withInstalledAt(aiskills.core.utils.isoNow())
+                              installGitUpdate(skill.path, sourceDir, updatedMeta) match {
+                                case Right(_) =>
+                                  val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
+                                  println(
+                                    s"✅ Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
+                                  )
+                                case Left(error) =>
+                                  val detail = error match {
+                                    case GitUpdateError.PreparationFailed(message) => s"Preparation failed: $message"
+                                    case GitUpdateError.ReplacementFailed(message) => s"Replacement failed: $message"
+                                    case GitUpdateError.RollbackFailed(backup, message) =>
+                                      s"$message. Recover the installation from: $backup"
+                                  }
+                                  println(s"Skipped: ${skill.name} ($detail)".yellow)
+                                  updateFailures += skill.name
+                              }
                             }
                         }
                     }
@@ -178,6 +345,8 @@ object Update {
         val missingRepoUrlList        = missingRepoUrl.result()
         val missingRepoSkillFileList  = missingRepoSkillFile.result()
         val cloneFailuresList         = cloneFailures.result()
+        val retainedBranchesList      = retainedBranches.result()
+        val updateFailuresList        = updateFailures.result()
 
         val skipped =
           missingMetadataList.length +
@@ -185,7 +354,7 @@ object Update {
             missingLocalSkillFileList.length +
             missingRepoUrlList.length +
             missingRepoSkillFileList.length +
-            cloneFailuresList.length
+            cloneFailuresList.length + retainedBranchesList.length + updateFailuresList.length
         val updated = targets.length - skipped
 
         println(s"Summary: $updated updated, $skipped skipped (${targets.length} total)".dim)
@@ -216,6 +385,15 @@ object Update {
           val formatted = missingRepoSkillFileList.map { case (name, sub) => s"$name ($sub)" }.mkString(", ")
           println(s"Repo SKILL.md missing (${missingRepoSkillFileList.length}): $formatted".yellow)
         } else ()
+
+        if (retainedBranchesList.nonEmpty) {
+          println(
+            s"Missing branch - selection retained (${retainedBranchesList.length}): ${retainedBranchesList.mkString(", ")}".yellow
+          )
+        } else { () }
+        if (updateFailuresList.nonEmpty) {
+          println(s"Update failed (${updateFailuresList.length}): ${updateFailuresList.mkString(", ")}".yellow)
+        } else { () }
 
         if cloneFailuresList.nonEmpty then println(
           s"Clone failed (${cloneFailuresList.length}): ${cloneFailuresList.mkString(", ")}".yellow
