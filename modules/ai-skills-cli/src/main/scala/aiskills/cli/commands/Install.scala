@@ -154,8 +154,24 @@ object Install {
     }
   }
 
+  private[commands] def validateBranchForSource(source: String, branch: Option[GitBranch]): Either[String, Unit] = {
+    branch.fold(().asRight[String]) { selected =>
+      if (isLocalPath(source)) {
+        "--branch is only supported for Git sources, not local directories".asLeft
+      } else {
+        GitClone.validateBranch(selected)
+      }
+    }
+  }
+
   /** Install skill from local path, GitHub, or Git URL. */
   def installSkill(source: String, options: InstallOptions): Unit = {
+    validateBranchForSource(source, options.branch) match {
+      case Left(detail) =>
+        System.err.println(s"Error: $detail".red)
+        throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
+      case Right(_) => ()
+    }
     aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
 
     // Resolve agents and location (interactive if not specified) before cloning
@@ -164,6 +180,7 @@ object Install {
     // Resolve source once
     val resolvedSource = resolveSource(
       source,
+      branch = options.branch,
       interactivity =
         if options.yes then GitClone.Interactivity.NotAllowed else GitClone.Interactivity.Allowed,
     )
@@ -184,7 +201,8 @@ object Install {
         then println(s"\n--- ${agent.toString} (${location.toString.toLowerCase}) ---".bold)
         else ()
 
-        println(s"Installing from: ${source.cyan}")
+        val branchLabel = options.branch.fold("")(b => s" (branch: ${b.value})")
+        println(s"Installing from: ${source.cyan}$branchLabel")
         println(s"Location: $locationDisplay")
         if agents.length <= 1 && locations.size <= 1 then {
           if !isProject && os.pwd =!= os.home then println(
@@ -261,13 +279,18 @@ object Install {
   }
 
   /** Resolve source into either a local path or a cloned git repo. */
-  private def resolveSource(source: String, interactivity: GitClone.Interactivity): ResolvedSource = {
+  private def resolveSource(
+    source: String,
+    branch: Option[GitBranch],
+    interactivity: GitClone.Interactivity
+  ): ResolvedSource = {
     if isLocalPath(source) then {
       val localPath  = expandPath(source)
       val sourceInfo = InstallSourceInfo(
         source = source,
         sourceType = SkillSourceType.Local,
         repoUrl = none[RepoUrl],
+        branch = none[GitBranch],
         authMethod = none[GitAuthMethod],
         localRoot = localPath.some,
       )
@@ -279,11 +302,18 @@ object Install {
 
       val cloned =
         GitClone.cloneRepoWithUi(
-          repoUrl,
-          tempDir / "repo",
-          preferred = none[GitAuthMethod],
-          interactivity = interactivity,
-          texts = GitClone.CloneTexts("Cloning repository...", "Repository cloned", "Clone failed"),
+          GitClone.CloneRequest(
+            repoUrl,
+            tempDir / "repo",
+            branch = branch,
+            preferred = none[GitAuthMethod],
+            interactivity = interactivity,
+            texts = GitClone.CloneTexts(
+              branch.fold("Cloning repository...")(b => s"Cloning repository (branch: ${b.value})..."),
+              "Repository cloned",
+              "Clone failed"
+            ),
+          )
         ) match {
           case Left(_) =>
             aiskills.cli.TempDirCleanup.safeRemoveAll(tempDir)
@@ -296,6 +326,7 @@ object Install {
         source = source,
         sourceType = SkillSourceType.Git,
         repoUrl = cloned.url.some,
+        branch = branch,
         authMethod = cloned.method.some,
         localRoot = none[os.Path],
       )
@@ -657,17 +688,19 @@ object Install {
       source = sourceInfo.source,
       sourceType = SkillSourceType.Git,
       repoUrl = sourceInfo.repoUrl,
+      branch = sourceInfo.branch,
       authMethod = sourceInfo.authMethod,
       subpath = subpath.some,
       localPath = none[String],
       installedAt = aiskills.core.utils.isoNow(),
     )
 
-  private def buildLocalMetadata(sourceInfo: InstallSourceInfo, skillDir: os.Path): SkillSourceMetadata =
+  private[commands] def buildLocalMetadata(sourceInfo: InstallSourceInfo, skillDir: os.Path): SkillSourceMetadata =
     SkillSourceMetadata(
       source = sourceInfo.source,
       sourceType = SkillSourceType.Local,
       repoUrl = none[RepoUrl],
+      branch = none[GitBranch],
       authMethod = none[GitAuthMethod],
       subpath = none[String],
       localPath = skillDir.toString.some,

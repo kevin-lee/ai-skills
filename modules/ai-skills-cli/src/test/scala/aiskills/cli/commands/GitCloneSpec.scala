@@ -9,7 +9,7 @@ import aiskills.cli.commands.GitClone.{
   Interactivity,
   TerminalPrompt
 }
-import aiskills.core.{GitAuthMethod, GitHubOwnerRepo, RepoUrl}
+import aiskills.core.{GitAuthMethod, GitBranch, GitHubOwnerRepo, RepoUrl}
 import cats.syntax.all.*
 import hedgehog.*
 import hedgehog.runner.*
@@ -17,6 +17,11 @@ import hedgehog.runner.*
 object GitCloneSpec extends Properties {
 
   override def tests: List[Test] = List(
+    example("validateBranch preserves valid names and rejects invalid input", testBranchValidation),
+    example("branch probe distinguishes missing references from other failures", testBranchProbe),
+    example("attemptEach preserves branches across ordinary authentication failures", testBranchAttemptChain),
+    example("attemptEach stops immediately on a confirmed missing branch", testMissingBranchStopsChain),
+    example("interactive attempt receives the original branch", testInteractiveBranch),
     // gitHubOwnerRepo
     example("gitHubOwnerRepo: extracts from HTTPS URL", testOwnerRepoHttps),
     example("gitHubOwnerRepo: extracts from HTTPS URL with .git", testOwnerRepoHttpsDotGit),
@@ -277,4 +282,119 @@ object GitCloneSpec extends Properties {
         TerminalPrompt.Suppressed,
       )
     )
+  private val selectedBranch           = GitBranch("feature/New-Skill")
+
+  private def testBranchValidation: Result = {
+    Result.all(
+      List("develop", "feature/New-Skill").map { value => GitClone.validateBranch(GitBranch(value)) ==== Right(()) } ++
+        List(
+          "",
+          " ",
+          "bad branch",
+          "-option",
+          "--upload-pack=bad",
+          "@{-1}",
+          "bad..branch",
+          "bad:branch",
+          "bad*branch",
+          "bad?branch",
+          "bad[branch",
+          "bad.lock",
+          "/branch",
+          "branch/",
+          "branch//name",
+          "HEAD"
+        ).map { value =>
+          Result.assert(GitClone.validateBranch(GitBranch(value)).isLeft).log(value)
+        }
+    )
+  }
+
+  private def testBranchProbe: Result = {
+    import GitClone.CloneAttemptError
+    val reference = s"${"a" * 40}\trefs/heads/${selectedBranch.value}\n"
+    Result.all(
+      List(
+        GitClone.classifyBranchProbe(selectedBranch, 0, reference, "") ==== Right(()),
+        GitClone.classifyBranchProbe(selectedBranch, 2, "", "") ==== Left(
+          CloneAttemptError.MissingBranch(selectedBranch)
+        ),
+        Result.assert(
+          GitClone
+            .classifyBranchProbe(selectedBranch, 128, "", "authentication failed")
+            .left
+            .exists { case CloneAttemptError.Failed(_) => true; case CloneAttemptError.MissingBranch(_) => false }
+        ),
+        Result.assert(GitClone.classifyBranchProbe(selectedBranch, 0, "", "").isLeft),
+        Result.assert(
+          GitClone.classifyBranchProbe(selectedBranch, 0, reference.replace("refs/heads", "refs/tags"), "").isLeft
+        ),
+        Result.assert(GitClone.classifyBranchProbe(selectedBranch, 0, "malformed", "").isLeft),
+      )
+    )
+  }
+
+  private def testBranchAttemptChain: Result = {
+    import GitClone.{AttemptChainResult, CloneAttemptError}
+    val strategies = fullGitHubChain.take(2)
+    val result     = GitClone.attemptEach(
+      strategies,
+      os.pwd,
+      selectedBranch.some,
+      Nil,
+      (strategy, _, branch) => {
+        if (branch =!= selectedBranch.some) CloneAttemptError.Failed("branch lost").asLeft
+        else if (strategy.method === GitAuthMethod.Anonymous) CloneAttemptError.Failed("authentication failed").asLeft
+        else ().asRight
+      }
+    )
+    val exhausted  = GitClone.attemptEach(
+      strategies,
+      os.pwd,
+      selectedBranch.some,
+      Nil,
+      (_, _, _) => CloneAttemptError.Failed("failure").asLeft
+    )
+    Result.all(
+      List(
+        result ==== AttemptChainResult.Succeeded(
+          CloneStrategy(GitAuthMethod.Ssh, gitHubSsh, CredentialHelperMode.Default, TerminalPrompt.Allowed)
+        ),
+        exhausted ==== AttemptChainResult.Exhausted(
+          strategies.map(s => GitClone.CloneAttempt(s.method, s.url, "failure"))
+        ),
+      )
+    )
+  }
+
+  private def testMissingBranchStopsChain: Result = {
+    import GitClone.{AttemptChainResult, CloneAttemptError}
+    val first =
+      CloneStrategy(GitAuthMethod.Anonymous, gitHubHttps, CredentialHelperMode.Disabled, TerminalPrompt.Suppressed)
+    GitClone.attemptEach(
+      fullGitHubChain,
+      os.pwd,
+      selectedBranch.some,
+      Nil,
+      (strategy, _, _) => {
+        if (strategy.method === GitAuthMethod.Anonymous) CloneAttemptError.MissingBranch(selectedBranch).asLeft
+        else ().asRight
+      }
+    ) ==== AttemptChainResult.MissingBranch(selectedBranch, first)
+  }
+
+  private def testInteractiveBranch: Result = {
+    import GitClone.{AttemptChainResult, CloneAttemptError}
+    val strategy =
+      CloneStrategy(GitAuthMethod.Interactive, gitHubHttps, CredentialHelperMode.Default, TerminalPrompt.Allowed)
+    GitClone.attemptEach(
+      List(strategy),
+      os.pwd,
+      selectedBranch.some,
+      Nil,
+      (_, _, branch) => Either.cond(branch === selectedBranch.some, (), CloneAttemptError.Failed("branch lost"))
+    ) ====
+      AttemptChainResult.Succeeded(strategy)
+  }
+
 }

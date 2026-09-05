@@ -2,7 +2,16 @@ package aiskills.cli
 
 import cats.syntax.all.*
 import com.monovore.decline.*
-import aiskills.core.{Agent, InstallOptions, ListOptions, ReadOptions, RemoveOptions, SkillLocation, SyncOptions}
+import aiskills.core.{
+  Agent,
+  GitBranch,
+  InstallOptions,
+  ListOptions,
+  ReadOptions,
+  RemoveOptions,
+  SkillLocation,
+  SyncOptions
+}
 import aiskills.cli.commands.*
 import aiskills.info.AiSkillsInfo
 
@@ -94,8 +103,12 @@ object Main {
           |(owner/repo/skill-name), a full Git URL (HTTPS or SSH), or a local
           |directory path. If no --agent is given, an interactive prompt lets
           |you choose the target agent(s) and location.
+          |--branch records a named branch for future updates. Reinstall without
+          |--branch and overwrite to return to default-branch tracking.
           |
           |Examples:
+          |  aiskills install owner/repo --branch develop                # Track a named branch
+          |  aiskills install owner/repo/skills/demo --branch feature/new-skill
           |  aiskills install anthropics/skills                          # Interactive agent & location selection
           |  aiskills install anthropics/skills/skills/pdf               # Single skill by path (interactive)
           |  aiskills install owner/repo/skills/skill-name               # Single skill by path (interactive)
@@ -124,7 +137,8 @@ object Main {
           )
           .orNone
         val yes     = Opts.flag("yes", "Skip interactive selection, install all skills found", short = "y").orFalse
-        (source, project, global, agent, yes).mapN { (src, p, g, a, y) =>
+        val branch  = Opts.option[String]("branch", "Install from a named Git branch (Git sources only)").orNone
+        (source, project, global, agent, yes, branch).mapN { (src, p, g, a, y, b) =>
           val parsedAgents: Option[List[Agent]] = a.map { agentStr =>
             aiskills.core.utils.AgentNames.parseAgentNames(agentStr) match {
               case Right(agents) => agents
@@ -149,7 +163,10 @@ object Main {
             sys.exit(1)
           } else ()
 
-          Install.installSkill(src, InstallOptions(locations = locations, agent = parsedAgents, yes = y))
+          Install.installSkill(
+            src,
+            InstallOptions(branch = b.map(GitBranch(_)), locations = locations, agent = parsedAgents, yes = y)
+          )
         }
       }
 
@@ -260,6 +277,9 @@ object Main {
           |local path). When no skill names are given, all installed skills
           |are updated. Skills without source metadata are skipped (re-install
           |them once to enable updates).
+          |Recorded branches are followed. If a branch is confirmed missing,
+          |a terminal prompt offers default-branch tracking. Without terminal
+          |input, that update is skipped and the branch selection is retained.
           |
           |Examples:
           |  aiskills update                              # Update all installed skills

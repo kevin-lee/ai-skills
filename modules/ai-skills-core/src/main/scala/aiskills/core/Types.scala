@@ -110,6 +110,7 @@ final case class SkillLocationInfo(
       Show
 
 final case class InstallOptions(
+  branch: Option[GitBranch],
   locations: Set[SkillLocation],
   agent: Option[List[Agent]],
   yes: Boolean,
@@ -156,6 +157,10 @@ object SkillSourceType {
 /** Any git clone source: an https/ssh/git URL or a local .git path. */
 type RepoUrl = RepoUrl.Type
 object RepoUrl extends Newtype[String], CatsEqShow[String], CirceNewtypeCodec[String]
+
+/** An explicitly selected Git branch. Validated at the Git operation boundary. */
+type GitBranch = GitBranch.Type
+object GitBranch extends Newtype[String], CatsEqShow[String], CirceNewtypeCodec[String]
 
 /** A GitHub repo identity in `owner/repo` form. */
 type GitHubOwnerRepo = GitHubOwnerRepo.Type
@@ -207,6 +212,7 @@ final case class SkillSourceMetadata private (
   source: String,
   sourceType: SkillSourceType,
   repoUrl: Option[RepoUrl],
+  branch: Option[GitBranch],
   authMethod: Option[GitAuthMethod], // None means "no recorded method": run the full fallback chain
   subpath: Option[String], // Canonical: None means the skill is at the repo root
   localPath: Option[String],
@@ -223,6 +229,8 @@ object SkillSourceMetadata {
 
     def withRepoUrl(url: Option[RepoUrl]): SkillSourceMetadata = skillSourceMetadata.copy(repoUrl = url)
 
+    def withBranch(branch: Option[GitBranch]): SkillSourceMetadata = skillSourceMetadata.copy(branch = branch)
+
     def withAuthMethod(method: Option[GitAuthMethod]): SkillSourceMetadata =
       skillSourceMetadata.copy(authMethod = method)
   }
@@ -238,6 +246,7 @@ object SkillSourceMetadata {
     source: String,
     sourceType: SkillSourceType,
     repoUrl: Option[RepoUrl],
+    branch: Option[GitBranch],
     authMethod: Option[GitAuthMethod],
     subpath: Option[String],
     localPath: Option[String],
@@ -248,6 +257,7 @@ object SkillSourceMetadata {
       source,
       sourceType,
       repoUrl,
+      branch,
       authMethod,
       normalizeSubpath(subpath),
       localPath,
@@ -266,6 +276,7 @@ object SkillSourceMetadata {
             m.source,
             m.sourceType,
             m.repoUrl,
+            m.branch,
             m.authMethod,
             m.subpath,
             m.localPath,
@@ -339,6 +350,7 @@ final case class InstallSourceInfo(
   source: String,
   sourceType: SkillSourceType,
   repoUrl: Option[RepoUrl],
+  branch: Option[GitBranch],
   authMethod: Option[GitAuthMethod],
   localRoot: Option[os.Path],
 ) derives Eq,
