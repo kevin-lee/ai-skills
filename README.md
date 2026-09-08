@@ -14,9 +14,9 @@
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/kevin-lee/ai-skills">
 </p>
 
-`ai-skills` is a native CLI tool for managing reusable prompt skills for AI coding agents. It can install and manage AI agent skills (`SKILL.md`) and provides commands to `install`, `list`, `read`, `search`, `update`, `sync`, and `remove` skills across project-local and global directories for multiple AI agents.
+`ai-skills` is a native CLI tool for managing reusable prompt skills for AI coding agents. It can install and manage AI agent skills (`SKILL.md`) and provides commands to `install`, `list`, `read`, `search`, `update`, `sync`, and `remove` skills across project-local and global directories for multiple AI agents. `search` covers the **skills.sh** and **agentskill.sh** marketplaces as well as your locally installed skills.
 
-Built with Scala 3 and Scala Native — compiles to a standalone binary with no JVM or Node.js runtime required.
+Built with Scala 3 and Scala Native - compiles to a standalone binary with no JVM or Node.js runtime required.
 
 ## Please visit the [ai-skills website](https://ai-skills.kevinly.dev) for a usage guide.
 
@@ -49,7 +49,7 @@ Notes:
 - **Universal** (`~/.agents`) has no standard env var across agents, so it always stays under `$HOME`.
 - **Cursor**: `CURSOR_CONFIG_DIR` is only documented for the CLI's `cli-config.json`, not for skills, so it is not honored.
 - **Windsurf** has no documented mechanism to relocate `~/.codeium/windsurf`.
-- Project-level directories are never relocated — no agent supports a custom project dir location.
+- Project-level directories are never relocated - no agent supports a custom project dir location.
 - Empty variable values are ignored. A leading `~` expands to your home directory; relative paths resolve against the current directory.
 
 ## Install
@@ -81,6 +81,7 @@ Pre-built binaries are available on the [Releases](https://github.com/kevin-lee/
 |-----------------|---------------------------|
 | macOS 26+ ARM64 | `aiskills-macos-26-arm64` |
 | macOS 15  ARM64 | `aiskills-macos-15-arm64` |
+| macOS 15 Intel  | `aiskills-macos-15-intel` |
 | Linux ARM64     | `aiskills-linux-arm64`    |
 | Linux x86_64    | `aiskills-linux-x86_64`   |
 
@@ -145,6 +146,29 @@ This option also works with full Git repository addresses. It does not apply to 
 The selected branch is recorded in `.aiskills.json`, and `aiskills update` keeps following it. If Git confirms that the branch is missing, an interactive update asks whether to switch the affected installations to the repository's current default branch. Without terminal input, the update is skipped and the selection is retained. Authentication and network failures do not trigger a switch.
 
 Accepting the switch clears the recorded branch only for skills successfully updated from the default branch. It changes local tracking metadata and does not delete a remote branch. To return to default-branch tracking while the named branch still exists, reinstall without `--branch` and choose to overwrite the existing skill. Skipping the overwrite keeps the existing selection.
+
+## Git Authentication
+
+`install`, `update`, and `search` share one clone implementation. For a `github.com` repository, in
+either URL form, it escalates through the available authentication methods instead of giving up
+after the first failure:
+
+| Order | Method              | What it does                                                       |
+|-------|---------------------|--------------------------------------------------------------------|
+| 1     | `anonymous`         | https with credential helpers disabled (public repos)              |
+| 2     | `ssh`               | `git@github.com:owner/repo.git` (may prompt for a key passphrase)  |
+| 3     | `gh`                | `gh` used as a git credential helper                               |
+| 4     | `credential-helper` | https with the configured git credential helper                    |
+| 5     | `interactive`       | asks first, then hands the terminal to git for its own prompt      |
+
+The failure is only reported after every method has been tried, and the report says what was
+attempted. The interactive step only runs when stdin is a TTY and `--yes` was not passed, so CI and
+piped runs fail with the report instead of hanging.
+
+`ai-skills` never reads or stores credentials itself - git does its own prompting, and a personal
+access token works as the password.
+
+See https://ai-skills.kevinly.dev/docs/git-authentication for the full details.
 
 ## Skill Format
 
