@@ -1,6 +1,14 @@
 package aiskills.core.utils
 
-import aiskills.core.{GitAuthMethod, GitBranch, RepoUrl, SkillSourceMetadata, SkillSourceType}
+import aiskills.core.{
+  ContentHash,
+  GitAuthMethod,
+  GitBranch,
+  GitCommitHash,
+  RepoUrl,
+  SkillSourceMetadata,
+  SkillSourceType
+}
 import cats.syntax.all.*
 import io.circe.parser.decode
 import io.circe.syntax.*
@@ -30,6 +38,10 @@ object SkillMetadataSpec extends Properties {
     example("reads legacy metadata without authMethod as None", testLegacyMetadataWithoutAuthMethod),
     example("GitAuthMethod: render and fromString round-trip", testGitAuthMethodRoundTrip),
     example("GitAuthMethod: fromString rejects an unknown value", testGitAuthMethodUnknown),
+    example("version fields round-trip", testVersionFieldsRoundTrip),
+    example("reads legacy metadata without version fields as None", testLegacyMetadataWithoutVersionFields),
+    example("writes absent version fields as JSON null", testWritesAbsentVersionFieldsAsNull),
+    example("writeInstalledSkillMetadata records the hash of the installed files", testWriteInstalledSkillMetadata),
   )
 
   private def withTempDir[A](f: os.Path => A): A = {
@@ -48,7 +60,11 @@ object SkillMetadataSpec extends Properties {
         authMethod = none[GitAuthMethod],
         subpath = "skills/demo".some,
         localPath = none[String],
+        commit = none[GitCommitHash],
+        sourceHash = none[ContentHash],
+        installedHash = none[ContentHash],
         installedAt = "2026-01-01T00:00:00.000Z",
+        checkedAt = none[String],
       )
 
       SkillMetadata.writeSkillMetadata(tempDir, payload)
@@ -80,7 +96,11 @@ object SkillMetadataSpec extends Properties {
         authMethod = none[GitAuthMethod],
         subpath = "skills/demo".some,
         localPath = none[String],
+        commit = none[GitCommitHash],
+        sourceHash = none[ContentHash],
+        installedHash = none[ContentHash],
         installedAt = "2026-01-01T00:00:00.000Z",
+        checkedAt = none[String],
       )
 
       SkillMetadata.writeSkillMetadata(tempDir, payload)
@@ -146,7 +166,11 @@ object SkillMetadataSpec extends Properties {
       authMethod = none[GitAuthMethod],
       subpath = subpath,
       localPath = none[String],
+      commit = none[GitCommitHash],
+      sourceHash = none[ContentHash],
+      installedHash = none[ContentHash],
       installedAt = "2026-01-01T00:00:00.000Z",
+      checkedAt = none[String],
     )
 
   private def testNormalizesDotSubpathOnConstruction: Result =
@@ -214,7 +238,11 @@ object SkillMetadataSpec extends Properties {
         authMethod = GitAuthMethod.Gh.some,
         subpath = "skills/demo".some,
         localPath = none[String],
+        commit = none[GitCommitHash],
+        sourceHash = none[ContentHash],
+        installedHash = none[ContentHash],
         installedAt = "2026-01-01T00:00:00.000Z",
+        checkedAt = none[String],
       )
 
       SkillMetadata.writeSkillMetadata(tempDir, payload)
@@ -288,5 +316,67 @@ object SkillMetadataSpec extends Properties {
       )
     )
   }
+
+  private def testVersionFieldsRoundTrip: Result =
+    withTempDir { tempDir =>
+      val payload = metadataWithSubpath("skills/demo".some)
+        .withCommit(GitCommitHash("0123456789abcdef0123456789abcdef01234567").some)
+        .withSourceHash(ContentHash("89abcdef0123456789abcdef0123456789abcdef").some)
+        .withInstalledHash(ContentHash("fedcba9876543210fedcba9876543210fedcba98").some)
+        .withCheckedAt("2026-09-27T00:00:00.000Z".some)
+
+      SkillMetadata.writeSkillMetadata(tempDir, payload)
+      SkillMetadata.readSkillMetadata(tempDir) ==== payload.some
+    }
+
+  private def testLegacyMetadataWithoutVersionFields: Result =
+    withTempDir { tempDir =>
+      // Write JSON without the version keys, simulating metadata written before version tracking
+      os.write(tempDir / SkillMetadata.SkillMetadataFile, legacyJsonWithSubpath("skills/demo"))
+      val read = SkillMetadata.readSkillMetadata(tempDir)
+
+      read match {
+        case Some(r) =>
+          Result.all(
+            List(
+              r.commit ==== none[GitCommitHash],
+              r.sourceHash ==== none[ContentHash],
+              r.installedHash ==== none[ContentHash],
+              r.checkedAt ==== none[String],
+            )
+          )
+        case None => Result.failure.log("Expected Some but got None")
+      }
+    }
+
+  private def testWritesAbsentVersionFieldsAsNull: Result =
+    withTempDir { tempDir =>
+      SkillMetadata.writeSkillMetadata(tempDir, metadataWithSubpath("skills/demo".some))
+      val raw = os.read(tempDir / SkillMetadata.SkillMetadataFile)
+      Result.all(
+        List("commit", "sourceHash", "installedHash", "checkedAt").map { field =>
+          Result.assert(raw.contains(s"\"$field\" : null")).log(s"raw was: $raw")
+        }
+      )
+    }
+
+  private def testWriteInstalledSkillMetadata: Result =
+    withTempDir { tempDir =>
+      os.write(tempDir / "SKILL.md", "---\nname: demo\ndescription: test\n---\nbody\n")
+      val payload  = metadataWithSubpath("skills/demo".some)
+        .withSourceHash(ContentHash("89abcdef0123456789abcdef0123456789abcdef").some)
+      val expected = SkillHash.directoryHash(tempDir).toOption
+
+      SkillMetadata.writeInstalledSkillMetadata(tempDir, payload)
+      val read = SkillMetadata.readSkillMetadata(tempDir)
+
+      Result.all(
+        List(
+          Result.assert(expected.isDefined).log("Expected a directory hash"),
+          read.flatMap(_.installedHash) ==== expected,
+          read.map(_.withInstalledHash(none[ContentHash])) ==== payload.some,
+        )
+      )
+    }
 
 }

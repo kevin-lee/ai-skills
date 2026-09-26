@@ -162,6 +162,14 @@ object RepoUrl extends Newtype[String], CatsEqShow[String], CirceNewtypeCodec[St
 type GitBranch = GitBranch.Type
 object GitBranch extends Newtype[String], CatsEqShow[String], CirceNewtypeCodec[String]
 
+/** A Git tree hash identifying the content of a skill folder. */
+type ContentHash = ContentHash.Type
+object ContentHash extends Newtype[String], CatsEqShow[String], CirceNewtypeCodec[String]
+
+/** A Git commit hash. */
+type GitCommitHash = GitCommitHash.Type
+object GitCommitHash extends Newtype[String], CatsEqShow[String], CirceNewtypeCodec[String]
+
 /** A GitHub repo identity in `owner/repo` form. */
 type GitHubOwnerRepo = GitHubOwnerRepo.Type
 object GitHubOwnerRepo extends InlinedRefined[String], CatsEqShow[String] {
@@ -216,7 +224,11 @@ final case class SkillSourceMetadata private (
   authMethod: Option[GitAuthMethod], // None means "no recorded method": run the full fallback chain
   subpath: Option[String], // Canonical: None means the skill is at the repo root
   localPath: Option[String],
+  commit: Option[GitCommitHash], // Git sources only: the commit the installed content came from
+  sourceHash: Option[ContentHash], // Git tree hash of the source skill folder. None means not recorded
+  installedHash: Option[ContentHash], // Git tree hash of the installed files when aiskills last wrote them
   installedAt: String,
+  checkedAt: Option[String], // Global skills only: when `update` last compared the source version
 ) derives Eq,
       Show
 object SkillSourceMetadata {
@@ -233,6 +245,15 @@ object SkillSourceMetadata {
 
     def withAuthMethod(method: Option[GitAuthMethod]): SkillSourceMetadata =
       skillSourceMetadata.copy(authMethod = method)
+
+    def withCommit(commit: Option[GitCommitHash]): SkillSourceMetadata = skillSourceMetadata.copy(commit = commit)
+
+    def withSourceHash(hash: Option[ContentHash]): SkillSourceMetadata = skillSourceMetadata.copy(sourceHash = hash)
+
+    def withInstalledHash(hash: Option[ContentHash]): SkillSourceMetadata =
+      skillSourceMetadata.copy(installedHash = hash)
+
+    def withCheckedAt(at: Option[String]): SkillSourceMetadata = skillSourceMetadata.copy(checkedAt = at)
   }
 
   /** Canonicalize the repo-root subpath. `""`, `"."`, and whitespace-only all mean "repo root",
@@ -250,7 +271,11 @@ object SkillSourceMetadata {
     authMethod: Option[GitAuthMethod],
     subpath: Option[String],
     localPath: Option[String],
+    commit: Option[GitCommitHash],
+    sourceHash: Option[ContentHash],
+    installedHash: Option[ContentHash],
     installedAt: String,
+    checkedAt: Option[String],
   ): SkillSourceMetadata =
     new SkillSourceMetadata(
       name,
@@ -261,7 +286,11 @@ object SkillSourceMetadata {
       authMethod,
       normalizeSubpath(subpath),
       localPath,
+      commit,
+      sourceHash,
+      installedHash,
       installedAt,
+      checkedAt,
     )
 
   private val derivedCodec: Codec.AsObject[SkillSourceMetadata] = Codec.AsObject.derived
@@ -280,7 +309,11 @@ object SkillSourceMetadata {
             m.authMethod,
             m.subpath,
             m.localPath,
+            m.commit,
+            m.sourceHash,
+            m.installedHash,
             m.installedAt,
+            m.checkedAt,
           )
         ),
         derivedCodec,
@@ -352,6 +385,7 @@ final case class InstallSourceInfo(
   repoUrl: Option[RepoUrl],
   branch: Option[GitBranch],
   authMethod: Option[GitAuthMethod],
+  commit: Option[GitCommitHash],
   localRoot: Option[os.Path],
 ) derives Eq,
       Show

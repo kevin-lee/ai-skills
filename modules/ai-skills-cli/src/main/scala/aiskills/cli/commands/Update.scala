@@ -6,7 +6,7 @@ import cats.*
 import cats.derived.*
 import cue4s.*
 import scala.util.Try
-import aiskills.core.utils.{Dirs, SkillMetadata, SkillNames, Skills, Yaml}
+import aiskills.core.utils.{Dirs, SkillHash, SkillMetadata, SkillNames, Skills, Yaml}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
@@ -29,6 +29,112 @@ object Update {
     case PreparationFailed(detail: String)
     case ReplacementFailed(detail: String)
     case RollbackFailed(backupPath: os.Path, detail: String)
+  }
+
+  enum UpdateMode derives Eq, Show {
+    case Normal, Force
+  }
+
+  enum SourceState derives Eq, Show {
+    case Unchanged, Changed, Unknown
+  }
+
+  enum LocalState derives Eq, Show {
+    case Clean, Modified, Unknown
+  }
+
+  enum UpdateDecision derives Eq, Show {
+    case Replace
+    case UpToDate
+    case KeepLocalChanges(source: SourceState)
+  }
+
+  enum ResultStatus derives Eq, Show {
+    case Updated, UpToDate, LocalChanges, Skipped
+  }
+
+  /** Compare the recorded source version with the latest one. */
+  private[commands] def sourceState(recorded: Option[ContentHash], latest: Option[ContentHash]): SourceState =
+    (recorded, latest) match {
+      case (Some(r), Some(l)) => if r === l then SourceState.Unchanged else SourceState.Changed
+      case (Some(_), None) | (None, Some(_)) | (None, None) => SourceState.Unknown
+    }
+
+  /** Compare the hash recorded when aiskills last wrote the skill's files with the files as they are now. */
+  private[commands] def localState(recorded: Option[ContentHash], current: Option[ContentHash]): LocalState =
+    (recorded, current) match {
+      case (Some(r), Some(c)) => if r === c then LocalState.Clean else LocalState.Modified
+      case (Some(_), None) | (None, Some(_)) | (None, None) => LocalState.Unknown
+    }
+
+  /** Decide what `update` does with a skill. Local edits are only overwritten with `UpdateMode.Force`. */
+  private[commands] def decideUpdate(mode: UpdateMode, source: SourceState, local: LocalState): UpdateDecision =
+    (mode, source, local) match {
+      case (UpdateMode.Force, _, _) => UpdateDecision.Replace
+      case (UpdateMode.Normal, SourceState.Unchanged, LocalState.Clean | LocalState.Unknown) =>
+        UpdateDecision.UpToDate
+      case (UpdateMode.Normal, SourceState.Changed | SourceState.Unknown, LocalState.Clean | LocalState.Unknown) =>
+        UpdateDecision.Replace
+      case (UpdateMode.Normal, s, LocalState.Modified) => UpdateDecision.KeepLocalChanges(s)
+    }
+
+  /** The short form of a content hash shown in the result line. */
+  private[commands] def shortHash(hash: ContentHash): String = hash.value.take(7)
+
+  /** Describe the version change of an updated skill. */
+  private[commands] def versionChange(recorded: Option[ContentHash], latest: Option[ContentHash]): String =
+    (recorded, latest) match {
+      case (Some(r), Some(l)) => if r === l then "forced" else s"${shortHash(r)} → ${shortHash(l)}"
+      case (None, Some(l)) => s"unrecorded → ${shortHash(l)}"
+      case (Some(_), None) | (None, None) => "version unknown"
+    }
+
+  /** Describe why a skill with local changes was kept. */
+  private[commands] def localChangesDetail(source: SourceState): String = source match {
+    case SourceState.Unchanged => "source unchanged"
+    case SourceState.Changed => "source updated - use --force to overwrite"
+    case SourceState.Unknown => "source version unknown - use --force to overwrite"
+  }
+
+  /** The status label of a result line, padded so every label has the same width. */
+  private[commands] def statusLabel(status: ResultStatus): String = {
+    def label(emoji: String, text: String): String = s"$emoji ${text.padTo("Local changes:".length, ' ')}"
+    status match {
+      case ResultStatus.Updated => label("✅", "Updated:")
+      case ResultStatus.UpToDate => label("🟩", "Up to date:")
+      case ResultStatus.LocalChanges => label("🟨", "Local changes:")
+      case ResultStatus.Skipped => label("🟥", "Skipped:")
+    }
+  }
+
+  /** The skill part of a result line. */
+  private[commands] def skillResultText(skill: Skill): String =
+    s"${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): ${Dirs.displaySkillsDir(skill.agent, skill.location)}"
+
+  /** `checkedAt` is recorded for global skills only, so shared project directories do not change on every run. */
+  private[commands] def checkedAtFor(location: SkillLocation, now: String): Option[String] = location match {
+    case SkillLocation.Global => now.some
+    case SkillLocation.Project => none[String]
+  }
+
+  private def printResult(status: ResultStatus, skill: Skill, detail: Option[String]): Unit = {
+    val colour: String => String = status match {
+      case ResultStatus.Updated => _.green
+      case ResultStatus.UpToDate => identity
+      case ResultStatus.LocalChanges => _.yellow
+      case ResultStatus.Skipped => _.red
+    }
+    val detailText               = detail.fold("")(d => s" ${colour(s"($d)").bold}")
+    println(s"${colour(statusLabel(status)).bold} ${colour(skillResultText(skill))}$detailText")
+  }
+
+  /** A skipped skill only gets metadata that changed. For a global skill that is always `checkedAt`. A project
+    * skill gets a write only when its source address, authentication method or branch changed, or when a stray
+    * `checkedAt` has to be dropped.
+    */
+  private def recordSkip(skill: Skill, recorded: SkillSourceMetadata, next: SkillSourceMetadata): Unit = {
+    val withCheck = next.withCheckedAt(checkedAtFor(skill.location, aiskills.core.utils.isoNow()))
+    if withCheck =!= recorded then SkillMetadata.writeSkillMetadata(skill.path, withCheck) else ()
   }
 
   private[commands] def groupGitSkills(
@@ -134,7 +240,7 @@ object Update {
       val prepared  = Try {
         os.copy(sourceDir, candidate)
         reapplyRename(candidate, metadata)
-        SkillMetadata.writeSkillMetadata(candidate, metadata)
+        SkillMetadata.writeInstalledSkillMetadata(candidate, metadata)
       }.toEither.left.map(ex => GitUpdateError.PreparationFailed(failureDetail(ex)))
       val result    = prepared.flatMap { _ =>
         replaceGitUpdate(
@@ -154,7 +260,7 @@ object Update {
   }
 
   /** Update installed skills from their recorded source metadata. */
-  def updateSkills(skillNames: List[String]): Unit = {
+  def updateSkills(skillNames: List[String], mode: UpdateMode): Unit = {
     val requested = SkillNames.normalizeSkillNames(skillNames)
     val skills    = Skills.findAllSkills()
 
@@ -184,6 +290,10 @@ object Update {
         val cloneFailures         = List.newBuilder[String]
         val retainedBranches      = List.newBuilder[String]
         val updateFailures        = List.newBuilder[String]
+        val updatedSkills         = List.newBuilder[String]
+        val upToDateSkills        = List.newBuilder[String]
+        val localChangedSkills    = List.newBuilder[String]
+        val versionUnknownSkills  = List.newBuilder[String]
         val interactivity         = if (GitClone.isStdinTty) Interactivity.Allowed else Interactivity.NotAllowed
 
         aiskills.cli.TempDirCleanup.ensureAtexitRegistered()
@@ -201,16 +311,13 @@ object Update {
         // Phase 2: Skip skills with no metadata or missing repo URL
         noMeta.foreach {
           case (skill, _) =>
-            val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
-            println(
-              s"Skipped: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel (no source metadata; re-install once to enable updates)".yellow
-            )
+            printResult(ResultStatus.Skipped, skill, "no source metadata; re-install once to enable updates".some)
             missingMetadata += skill.name
         }
 
         gitNoUrl.foreach {
           case (skill, _) =>
-            println(s"Skipped: ${skill.name} (missing repo URL metadata)".yellow)
+            printResult(ResultStatus.Skipped, skill, "missing repo URL metadata".some)
             missingRepoUrl += skill.name
         }
 
@@ -220,23 +327,45 @@ object Update {
             val localPath = meta.localPath.map(os.Path(_))
             localPath match {
               case None =>
-                println(s"Skipped: ${skill.name} (local source missing)".yellow)
+                printResult(ResultStatus.Skipped, skill, "local source missing".some)
                 missingLocalSource += skill.name
               case Some(lp) if !os.exists(lp) =>
-                println(s"Skipped: ${skill.name} (local source missing)".yellow)
+                printResult(ResultStatus.Skipped, skill, "local source missing".some)
                 missingLocalSource += skill.name
               case Some(lp) if !os.exists(lp / "SKILL.md") =>
-                println(s"Skipped: ${skill.name} (SKILL.md missing at local source)".yellow)
+                printResult(ResultStatus.Skipped, skill, "SKILL.md missing at local source".some)
                 missingLocalSkillFile += skill.name
               case Some(lp) =>
-                updateSkillFromDir(skill.path, lp)
-                val updatedMeta = meta.withInstalledAt(aiskills.core.utils.isoNow())
-                SkillMetadata.writeSkillMetadata(skill.path, updatedMeta)
-                reapplyRename(skill.path, updatedMeta)
-                val pathLabel   = Dirs.displaySkillsDir(skill.agent, skill.location)
-                println(
-                  s"\u2705 Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
-                )
+                val latest  = SkillHash.sourceDirectoryHash(lp).toOption
+                val current = SkillHash.directoryHash(skill.path).toOption
+                decideUpdate(
+                  mode,
+                  sourceState(meta.sourceHash, latest),
+                  localState(meta.installedHash, current)
+                ) match {
+                  case UpdateDecision.Replace =>
+                    updateSkillFromDir(skill.path, lp)
+                    reapplyRename(skill.path, meta)
+                    val now         = aiskills.core.utils.isoNow()
+                    val updatedMeta = meta
+                      .withSourceHash(latest)
+                      .withInstalledAt(now)
+                      .withCheckedAt(checkedAtFor(skill.location, now))
+                    SkillMetadata.writeInstalledSkillMetadata(skill.path, updatedMeta)
+                    printResult(ResultStatus.Updated, skill, versionChange(meta.sourceHash, latest).some)
+                    updatedSkills += skill.name
+                    if latest.isEmpty then versionUnknownSkills += skill.name else ()
+
+                  case UpdateDecision.UpToDate =>
+                    recordSkip(skill, meta, meta)
+                    printResult(ResultStatus.UpToDate, skill, none[String])
+                    upToDateSkills += skill.name
+
+                  case UpdateDecision.KeepLocalChanges(source) =>
+                    recordSkip(skill, meta, meta)
+                    printResult(ResultStatus.LocalChanges, skill, localChangesDetail(source).some)
+                    localChangedSkills += skill.name
+                }
             }
         }
 
@@ -283,49 +412,97 @@ object Update {
                       case Left(UpdateSourceError.BranchRetained(branch)) =>
                         groupSkills.foreach {
                           case (skill, _) =>
-                            println(
-                              s"Skipped: ${skill.name} (branch '${branch.value}' missing - selection retained)".yellow
+                            printResult(
+                              ResultStatus.Skipped,
+                              skill,
+                              s"branch '${branch.value}' missing - selection retained".some,
                             )
                             retainedBranches += skill.name
                         }
                       case Left(UpdateSourceError.CloneFailed(_)) =>
                         groupSkills.foreach {
                           case (skill, _) =>
-                            println(s"Skipped: ${skill.name} (git clone failed)".yellow)
+                            printResult(ResultStatus.Skipped, skill, "git clone failed".some)
                             cloneFailures += skill.name
                         }
                       case Right(resolved) =>
-                        val repoDir =
+                        val repoDir        =
                           if (resolved.branch === request.branch) request.targetPath else repoSubDir / "default-repo"
+                        val commit         = SkillHash.gitCommit(repoDir).toOption
+                        val branchSwitched = resolved.branch =!= request.branch
                         groupSkills.foreach {
                           case (skill, meta) =>
                             val sourceDir = meta.subpath.fold(repoDir)(sp => repoDir / os.RelPath(sp))
                             if (!os.exists(sourceDir / "SKILL.md")) {
-                              println(
-                                s"Skipped: ${skill.name} (SKILL.md not found in repo at ${meta.subpath.getOrElse(".")})".yellow
+                              printResult(
+                                ResultStatus.Skipped,
+                                skill,
+                                s"SKILL.md not found in repo at ${meta.subpath.getOrElse(".")}".some,
                               )
                               missingRepoSkillFile += skill.name -> meta.subpath.getOrElse(".")
                             } else {
-                              val updatedMeta = meta
+                              val latest    = SkillHash.sourceGitTreeHash(repoDir, meta.subpath).toOption
+                              val current   = SkillHash.directoryHash(skill.path).toOption
+                              // Without a branch switch, resolved.branch equals the recorded branch,
+                              // because groups are keyed by branch.
+                              val refreshed = meta
                                 .withRepoUrl(resolved.cloned.url.some)
                                 .withAuthMethod(resolved.cloned.method.some)
                                 .withBranch(resolved.branch)
-                                .withInstalledAt(aiskills.core.utils.isoNow())
-                              installGitUpdate(skill.path, sourceDir, updatedMeta) match {
-                                case Right(_) =>
-                                  val pathLabel = Dirs.displaySkillsDir(skill.agent, skill.location)
-                                  println(
-                                    s"✅ Updated: ${skill.name} (${skill.location.toString.toLowerCase}, ${skill.agent.toString}): $pathLabel".green
-                                  )
-                                case Left(error) =>
-                                  val detail = error match {
-                                    case GitUpdateError.PreparationFailed(message) => s"Preparation failed: $message"
-                                    case GitUpdateError.ReplacementFailed(message) => s"Replacement failed: $message"
-                                    case GitUpdateError.RollbackFailed(backup, message) =>
-                                      s"$message. Recover the installation from: $backup"
+                              decideUpdate(
+                                mode,
+                                sourceState(meta.sourceHash, latest),
+                                localState(meta.installedHash, current),
+                              ) match {
+                                case UpdateDecision.Replace =>
+                                  val now         = aiskills.core.utils.isoNow()
+                                  val updatedMeta = refreshed
+                                    .withCommit(commit)
+                                    .withSourceHash(latest)
+                                    .withInstalledAt(now)
+                                    .withCheckedAt(checkedAtFor(skill.location, now))
+                                  installGitUpdate(skill.path, sourceDir, updatedMeta) match {
+                                    case Right(_) =>
+                                      printResult(
+                                        ResultStatus.Updated,
+                                        skill,
+                                        versionChange(meta.sourceHash, latest).some,
+                                      )
+                                      updatedSkills += skill.name
+                                      if latest.isEmpty then versionUnknownSkills += skill.name else ()
+                                    case Left(error) =>
+                                      val detail = error match {
+                                        case GitUpdateError.PreparationFailed(message) =>
+                                          s"Preparation failed: $message"
+                                        case GitUpdateError.ReplacementFailed(message) =>
+                                          s"Replacement failed: $message"
+                                        case GitUpdateError.RollbackFailed(backup, message) =>
+                                          s"$message. Recover the installation from: $backup"
+                                      }
+                                      printResult(ResultStatus.Skipped, skill, detail.some)
+                                      updateFailures += skill.name
                                   }
-                                  println(s"Skipped: ${skill.name} ($detail)".yellow)
-                                  updateFailures += skill.name
+
+                                case UpdateDecision.UpToDate =>
+                                  if branchSwitched then {
+                                    recordSkip(skill, meta, refreshed.withCommit(commit))
+                                    printResult(ResultStatus.UpToDate, skill, "now tracking the default branch".some)
+                                  } else {
+                                    // The commit is left as recorded, so a project skill gets no diff each time
+                                    // upstream moves.
+                                    recordSkip(skill, meta, refreshed)
+                                    printResult(ResultStatus.UpToDate, skill, none[String])
+                                  }
+                                  upToDateSkills += skill.name
+
+                                case UpdateDecision.KeepLocalChanges(source) =>
+                                  recordSkip(skill, meta, refreshed)
+                                  val detail =
+                                    if branchSwitched
+                                    then s"${localChangesDetail(source)}, now tracking the default branch"
+                                    else localChangesDetail(source)
+                                  printResult(ResultStatus.LocalChanges, skill, detail.some)
+                                  localChangedSkills += skill.name
                               }
                             }
                         }
@@ -347,6 +524,10 @@ object Update {
         val cloneFailuresList         = cloneFailures.result()
         val retainedBranchesList      = retainedBranches.result()
         val updateFailuresList        = updateFailures.result()
+        val updatedList               = updatedSkills.result()
+        val upToDateList              = upToDateSkills.result()
+        val localChangedList          = localChangedSkills.result()
+        val versionUnknownList        = versionUnknownSkills.result()
 
         val skipped =
           missingMetadataList.length +
@@ -355,9 +536,22 @@ object Update {
             missingRepoUrlList.length +
             missingRepoSkillFileList.length +
             cloneFailuresList.length + retainedBranchesList.length + updateFailuresList.length
-        val updated = targets.length - skipped
 
-        println(s"Summary: $updated updated, $skipped skipped (${targets.length} total)".dim)
+        println(
+          s"Summary: ${updatedList.length} updated, ${upToDateList.length} up to date, ${localChangedList.length} local changes, $skipped skipped (${targets.length} total)".dim
+        )
+
+        if localChangedList.nonEmpty then {
+          println(s"Local changes (${localChangedList.length}): ${localChangedList.mkString(", ")}".yellow)
+          println("Run `aiskills update --force <skill-name>` to overwrite local changes.".dim)
+        } else ()
+
+        if versionUnknownList.nonEmpty then {
+          println(s"Versions not recorded (${versionUnknownList.length}): ${versionUnknownList.mkString(", ")}".yellow)
+          println(
+            "A version cannot be recorded without Git or when the source folder contains a symbolic link. These skills are updated on every run.".dim
+          )
+        } else ()
 
         if missingMetadataList.nonEmpty then {
           println(

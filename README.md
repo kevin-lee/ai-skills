@@ -147,6 +147,37 @@ The selected branch is recorded in `.aiskills.json`, and `aiskills update` keeps
 
 Accepting the switch clears the recorded branch only for skills successfully updated from the default branch. It changes local tracking metadata and does not delete a remote branch. To return to default-branch tracking while the named branch still exists, reinstall without `--branch` and choose to overwrite the existing skill. Skipping the overwrite keeps the existing selection.
 
+## Updating skills
+
+`aiskills update` checks every installed skill against its source and prints one result line per skill.
+
+```
+✅ Updated:       2020-hindsight-scala (global, Claude): ~/.claude/skills (1a2b3c4 → 5d6e7f8)
+🟩 Up to date:    pr-analysis (global, Claude): ~/.claude/skills
+🟨 Local changes: riper-5 (global, Claude): ~/.claude/skills (source unchanged)
+🟥 Skipped:       foo (global, Claude): ~/.claude/skills (git clone failed)
+```
+
+- **Updated**: the source folder changed, so the skill was replaced.
+- **Up to date**: the source folder is unchanged, so the skill's files were left untouched. A commit that only changes other paths in the same repository does not count.
+- **Local changes**: the installed files were edited after installation, and they are kept. If the source also changed, use `--force` to overwrite them.
+- **Skipped**: the skill could not be checked, for example because the clone failed or it has no source metadata.
+
+Use `--force` (`-f`) to update regardless:
+
+```bash
+aiskills update --force commit
+```
+
+`.aiskills.json` records what the check needs:
+
+- `commit`: the Git commit the installed content came from (Git sources only)
+- `sourceHash`: the Git tree hash of the source skill folder
+- `installedHash`: the Git tree hash of the installed files, leaving out `.aiskills.json`, `.DS_Store`, `Thumbs.db` and `desktop.ini`
+- `checkedAt`: when `update` last checked the skill (global skills only, so project repositories do not get a diff on every run)
+
+Skills installed by an older version of `aiskills` have no recorded version. Their next update replaces them and records one. Versions are computed with Git, also for local sources. A skill whose version cannot be recorded is updated on every run, as before. That happens when Git is not available, or when the source folder contains a symbolic link, because the link may point outside the folder.
+
 ## Git Authentication
 
 `install`, `update`, and `search` share one clone implementation. For a `github.com` repository, in

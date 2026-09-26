@@ -6,6 +6,7 @@ import aiskills.core.utils.{
   Dirs,
   LocalSearch,
   MarketplaceSearch,
+  SkillHash,
   SkillMdFinder,
   SkillMetadata,
   Skills,
@@ -169,6 +170,7 @@ object Search {
     yamlName: String,
     actualRepoUrl: RepoUrl,
     authMethod: GitAuthMethod,
+    commit: Option[GitCommitHash],
     tempDir: os.Path,
   )
 
@@ -204,6 +206,7 @@ object Search {
 
           case Right(cloned) =>
             val repoDir = tempDir / "repo"
+            val commit  = SkillHash.gitCommit(repoDir).toOption
 
             results.flatMap { result =>
               findSkillMd(repoDir, result.skillId, result.name) match {
@@ -223,6 +226,7 @@ object Search {
                       yamlName = yamlName,
                       actualRepoUrl = cloned.url,
                       authMethod = cloned.method,
+                      commit = commit,
                       tempDir = tempDir,
                     )
                   )
@@ -245,6 +249,7 @@ object Search {
                       yamlName = "",
                       actualRepoUrl = cloned.url,
                       authMethod = cloned.method,
+                      commit = commit,
                       tempDir = tempDir,
                     )
                   )
@@ -297,9 +302,10 @@ object Search {
         repoUrl = c.actualRepoUrl.some,
         branch = none[GitBranch],
         authMethod = c.authMethod.some,
+        commit = c.commit,
         localRoot = none[os.Path],
       )
-      val metadata    = Install.buildGitMetadata(sourceInfo, subpath)
+      val metadata    = Install.buildGitMetadata(sourceInfo, subpath, Install.gitSourceHash(c.repoDir, subpath))
       (c.skillDir, installName, metadata)
     }
 
@@ -453,7 +459,7 @@ object Search {
                       val updated = Yaml.replaceYamlField(content, "name", newName)
                       os.write.over(skillMdPath, updated)
                     } else ()
-                    SkillMetadata.writeSkillMetadata(newTargetPath, metadata.withName(newName))
+                    SkillMetadata.writeInstalledSkillMetadata(newTargetPath, metadata.withName(newName))
                     println(s"\u2705 Installed: $labeledName as $newName $locationLabel".green)
                     (true, BulkDecision.Undecided)
                 }
@@ -480,7 +486,7 @@ object Search {
     metadata: SkillSourceMetadata,
   ): Unit = {
     os.copy(skillDir, targetPath, replaceExisting = true)
-    SkillMetadata.writeSkillMetadata(targetPath, metadata)
+    SkillMetadata.writeInstalledSkillMetadata(targetPath, metadata)
   }
 
   private def overwriteAndInstall(

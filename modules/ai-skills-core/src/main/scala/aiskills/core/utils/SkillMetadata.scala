@@ -21,7 +21,9 @@ object SkillMetadata {
         .flatMap(raw => decode[SkillSourceMetadata](raw).toOption)
   }
 
-  /** Write skill source metadata to a skill directory. */
+  /** Write skill source metadata to a skill directory. The metadata is written as given and `installedHash` is
+    * never recomputed, so recording `checkedAt` cannot absorb local edits.
+    */
   def writeSkillMetadata(skillDir: os.Path, metadata: SkillSourceMetadata): Unit = {
     val metadataPath = skillDir / SkillMetadataFile
     val payload      =
@@ -30,4 +32,10 @@ object SkillMetadata {
         metadata
     os.write.over(metadataPath, payload.asJson.spaces2)
   }
+
+  /** Record the installed state: hash the skill's files as they are now and write the metadata with that
+    * `installedHash`. Call it only right after aiskills has written the skill's files.
+    */
+  def writeInstalledSkillMetadata(skillDir: os.Path, metadata: SkillSourceMetadata): Unit =
+    writeSkillMetadata(skillDir, metadata.withInstalledHash(SkillHash.directoryHash(skillDir).toOption))
 }
