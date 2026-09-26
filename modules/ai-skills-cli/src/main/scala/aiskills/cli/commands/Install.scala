@@ -2,7 +2,7 @@ package aiskills.cli.commands
 
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{AgentsMd, Dirs, MarketplaceSkills, SkillMdFinder, SkillMetadata, Yaml}
+import aiskills.core.utils.{AgentsMd, Dirs, MarketplaceSkills, SkillHash, SkillMdFinder, SkillMetadata, Yaml}
 import aiskills.core.{*, given}
 import cats.syntax.all.*
 import cue4s.*
@@ -292,6 +292,7 @@ object Install {
         repoUrl = none[RepoUrl],
         branch = none[GitBranch],
         authMethod = none[GitAuthMethod],
+        commit = none[GitCommitHash],
         localRoot = localPath.some,
       )
       ResolvedSource.Local(localPath, sourceInfo)
@@ -328,6 +329,7 @@ object Install {
         repoUrl = cloned.url.some,
         branch = branch,
         authMethod = cloned.method.some,
+        commit = SkillHash.gitCommit(tempDir / "repo").toOption,
         localRoot = none[os.Path],
       )
 
@@ -383,6 +385,7 @@ object Install {
     } else {
       val skillName  = skillDir.last
       val targetPath = targetDir / skillName
+      val metadata   = buildLocalMetadata(sourceInfo, skillDir, localSourceHash(skillDir))
 
       resolveConflict(skillName, targetPath, targetDir, isProject, options.yes) match {
         case ConflictResolution.Skip =>
@@ -395,14 +398,14 @@ object Install {
             throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
           } else {
             os.copy(skillDir, targetPath, replaceExisting = true)
-            SkillMetadata.writeSkillMetadata(targetPath, buildLocalMetadata(sourceInfo, skillDir))
+            SkillMetadata.writeInstalledSkillMetadata(targetPath, metadata)
 
             println(s"\u2705 Installed: $skillName".green)
             println(s"   Location: ${displayInstallLocation(targetPath)}")
           }
 
         case ConflictResolution.Rename(newName) =>
-          installSkillWithRename(skillDir, targetDir, newName, buildLocalMetadata(sourceInfo, skillDir))
+          installSkillWithRename(skillDir, targetDir, newName, metadata)
           println(s"\u2705 Installed: $skillName as $newName".green)
           println(s"   Location: ${displayInstallLocation(targetDir / newName)}")
       }
@@ -431,6 +434,7 @@ object Install {
       } else {
         val skillName  = skillSubpath.split("/").last
         val targetPath = targetDir / skillName
+        val metadata   = buildGitMetadata(sourceInfo, skillSubpath, gitSourceHash(repoDir, skillSubpath))
 
         resolveConflict(skillName, targetPath, targetDir, isProject, options.yes) match {
           case ConflictResolution.Skip =>
@@ -443,14 +447,14 @@ object Install {
               throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
             } else {
               os.copy(skillDir, targetPath, replaceExisting = true)
-              SkillMetadata.writeSkillMetadata(targetPath, buildGitMetadata(sourceInfo, skillSubpath))
+              SkillMetadata.writeInstalledSkillMetadata(targetPath, metadata)
 
               println(s"\u2705 Installed: $skillName".green)
               println(s"   Location: ${displayInstallLocation(targetPath)}")
             }
 
           case ConflictResolution.Rename(newName) =>
-            installSkillWithRename(skillDir, targetDir, newName, buildGitMetadata(sourceInfo, skillSubpath))
+            installSkillWithRename(skillDir, targetDir, newName, metadata)
             println(s"\u2705 Installed: $skillName as $newName".green)
             println(s"   Location: ${displayInstallLocation(targetDir / newName)}")
         }
@@ -582,7 +586,7 @@ object Install {
                 count
               } else {
                 os.copy(info.skillDir, info.targetPath, replaceExisting = true)
-                SkillMetadata.writeSkillMetadata(
+                SkillMetadata.writeInstalledSkillMetadata(
                   info.targetPath,
                   buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
                 )
@@ -609,7 +613,7 @@ object Install {
                 (count, bulk)
               } else {
                 os.copy(info.skillDir, info.targetPath, replaceExisting = true)
-                SkillMetadata.writeSkillMetadata(
+                SkillMetadata.writeInstalledSkillMetadata(
                   info.targetPath,
                   buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
                 )
@@ -680,10 +684,30 @@ object Install {
     skillDir: os.Path,
     repoDir: os.Path,
   ): SkillSourceMetadata =
-    if sourceInfo.sourceType === SkillSourceType.Local then buildLocalMetadata(sourceInfo, skillDir)
-    else buildGitMetadata(sourceInfo, skillDir.relativeTo(repoDir).toString)
+    if sourceInfo.sourceType === SkillSourceType.Local
+    then buildLocalMetadata(
+      sourceInfo,
+      skillDir,
+      localSourceHash(skillDir)
+    )
+    else {
+      val subpath = skillDir.relativeTo(repoDir).toString
+      buildGitMetadata(sourceInfo, subpath, gitSourceHash(repoDir, subpath))
+    }
 
-  private[commands] def buildGitMetadata(sourceInfo: InstallSourceInfo, subpath: String): SkillSourceMetadata =
+  /** The version of a skill folder in a cloned repository, or `None` when it cannot be computed. */
+  private[commands] def gitSourceHash(repoDir: os.Path, subpath: String): Option[ContentHash] =
+    SkillHash.sourceGitTreeHash(repoDir, SkillSourceMetadata.normalizeSubpath(subpath.some)).toOption
+
+  /** The version of a local source folder, or `None` when it cannot be computed. */
+  private[commands] def localSourceHash(skillDir: os.Path): Option[ContentHash] =
+    SkillHash.sourceDirectoryHash(skillDir).toOption
+
+  private[commands] def buildGitMetadata(
+    sourceInfo: InstallSourceInfo,
+    subpath: String,
+    sourceHash: Option[ContentHash],
+  ): SkillSourceMetadata =
     SkillSourceMetadata(
       source = sourceInfo.source,
       sourceType = SkillSourceType.Git,
@@ -692,10 +716,18 @@ object Install {
       authMethod = sourceInfo.authMethod,
       subpath = subpath.some,
       localPath = none[String],
+      commit = sourceInfo.commit,
+      sourceHash = sourceHash,
+      installedHash = none[ContentHash],
       installedAt = aiskills.core.utils.isoNow(),
+      checkedAt = none[String],
     )
 
-  private[commands] def buildLocalMetadata(sourceInfo: InstallSourceInfo, skillDir: os.Path): SkillSourceMetadata =
+  private[commands] def buildLocalMetadata(
+    sourceInfo: InstallSourceInfo,
+    skillDir: os.Path,
+    sourceHash: Option[ContentHash],
+  ): SkillSourceMetadata =
     SkillSourceMetadata(
       source = sourceInfo.source,
       sourceType = SkillSourceType.Local,
@@ -704,7 +736,11 @@ object Install {
       authMethod = none[GitAuthMethod],
       subpath = none[String],
       localPath = skillDir.toString.some,
+      commit = none[GitCommitHash],
+      sourceHash = sourceHash,
+      installedHash = none[ContentHash],
       installedAt = aiskills.core.utils.isoNow(),
+      checkedAt = none[String],
     )
 
   private enum ConflictResolution {
@@ -791,7 +827,7 @@ object Install {
         val updated = Yaml.replaceYamlField(content, "name", newName)
         os.write.over(skillMdPath, updated)
       } else ()
-      SkillMetadata.writeSkillMetadata(targetPath, metadata.withName(newName))
+      SkillMetadata.writeInstalledSkillMetadata(targetPath, metadata.withName(newName))
     }
   }
 }

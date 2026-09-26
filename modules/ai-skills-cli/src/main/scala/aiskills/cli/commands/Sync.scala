@@ -2,8 +2,8 @@ package aiskills.cli.commands
 
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{AgentsMd, Dirs, SkillMetadata, Skills, TerminalWidth, Yaml}
-import aiskills.core.{Agent, Skill, SkillLocation, SyncOptions}
+import aiskills.core.utils.{AgentsMd, Dirs, SkillHash, SkillMetadata, Skills, TerminalWidth, Yaml}
+import aiskills.core.{Agent, Skill, SkillLocation, SkillSourceMetadata, SyncOptions}
 import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
@@ -112,6 +112,7 @@ object Sync {
                     } else ()
                     os.makeDir.all(targetDir)
                     os.copy(s.path, targetPath, replaceExisting = true)
+                    dropProjectCheckedAt(targetPath, targetLocation)
                     println(
                       s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
                     )
@@ -121,6 +122,7 @@ object Sync {
                   if !os.exists(targetPath) then {
                     os.makeDir.all(targetDir)
                     os.copy(s.path, targetPath, replaceExisting = true)
+                    dropProjectCheckedAt(targetPath, targetLocation)
                     println(
                       s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
                     )
@@ -211,6 +213,7 @@ object Sync {
                   } else ()
                   os.makeDir.all(targetDir)
                   os.copy(s.path, targetPath, replaceExisting = true)
+                  dropProjectCheckedAt(targetPath, targetLocation)
                   println(
                     s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
                   )
@@ -220,6 +223,7 @@ object Sync {
                 if !os.exists(targetPath) then {
                   os.makeDir.all(targetDir)
                   os.copy(s.path, targetPath, replaceExisting = true)
+                  dropProjectCheckedAt(targetPath, targetLocation)
                   println(
                     s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
                   )
@@ -278,6 +282,28 @@ object Sync {
     }
   }
 
+  /** Project skills never keep `checkedAt`, even when copied from a global skill. */
+  private def forTargetLocation(meta: SkillSourceMetadata, targetLocation: SkillLocation): SkillSourceMetadata =
+    targetLocation match {
+      case SkillLocation.Global => meta
+      case SkillLocation.Project => meta.withCheckedAt(none[String])
+    }
+
+  /** Drop `checkedAt` from a skill copied into a project directory. */
+  private def dropProjectCheckedAt(targetPath: os.Path, targetLocation: SkillLocation): Unit =
+    targetLocation match {
+      case SkillLocation.Project =>
+        SkillMetadata.readSkillMetadata(targetPath).foreach { meta =>
+          if meta.checkedAt.isDefined
+          then SkillMetadata.writeSkillMetadata(
+            targetPath,
+            forTargetLocation(meta, targetLocation)
+          )
+          else ()
+        }
+      case SkillLocation.Global => ()
+    }
+
   /** Sync a skill under a new name (rename flow). */
   private def syncSkillWithRename(
     sourcePath: os.Path,
@@ -295,9 +321,17 @@ object Sync {
       val updated = Yaml.replaceYamlField(content, "name", newName)
       os.write.over(skillMdPath, updated)
     } else ()
-    // Update .aiskills.json name field if metadata exists
+    // Update .aiskills.json name field if metadata exists. An unedited copy gets a new installed hash that
+    // includes the renamed `name:`. An edited copy keeps its recorded hash, so it stays reported as locally
+    // changed and is not overwritten without --force.
     SkillMetadata.readSkillMetadata(newTargetPath).foreach { meta =>
-      SkillMetadata.writeSkillMetadata(newTargetPath, meta.withName(newName))
+      val renamed = forTargetLocation(meta.withName(newName), targetLocation)
+      Update.localState(meta.installedHash, SkillHash.directoryHash(sourcePath).toOption) match {
+        case Update.LocalState.Clean =>
+          SkillMetadata.writeInstalledSkillMetadata(newTargetPath, renamed)
+        case Update.LocalState.Modified | Update.LocalState.Unknown =>
+          SkillMetadata.writeSkillMetadata(newTargetPath, renamed)
+      }
     }
     println(
       s"\u2705 Synced: ${sourcePath.last} as $newName -> ${to.toString} (${targetLocation.toString.toLowerCase})".green

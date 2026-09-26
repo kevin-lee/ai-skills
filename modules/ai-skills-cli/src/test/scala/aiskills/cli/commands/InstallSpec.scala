@@ -1,6 +1,15 @@
 package aiskills.cli.commands
 
-import aiskills.core.{GitAuthMethod, GitBranch, InstallSourceInfo, RepoUrl, SkillSourceMetadata, SkillSourceType}
+import aiskills.core.{
+  ContentHash,
+  GitAuthMethod,
+  GitBranch,
+  GitCommitHash,
+  InstallSourceInfo,
+  RepoUrl,
+  SkillSourceMetadata,
+  SkillSourceType
+}
 import aiskills.core.utils.SkillMetadata
 import cats.syntax.all.*
 import hedgehog.*
@@ -259,7 +268,7 @@ object InstallSpec extends Properties {
     Result.all(
       List(
         parts.length ==== 2,
-        s"https://github.com/${parts(0)}/${parts(1)}" ==== "https://github.com/anthropics/skills",
+        s"https://github.com/${parts.head}/${parts(1)}" ==== "https://github.com/anthropics/skills",
       )
     )
   }
@@ -270,7 +279,7 @@ object InstallSpec extends Properties {
     Result.all(
       List(
         Result.assert(parts.length > 2),
-        s"https://github.com/${parts(0)}/${parts(1)}" ==== "https://github.com/anthropics/skills",
+        s"https://github.com/${parts.head}/${parts(1)}" ==== "https://github.com/anthropics/skills",
         parts.drop(2).mkString("/") ==== "document-skills/pdf",
       )
     )
@@ -347,7 +356,11 @@ object InstallSpec extends Properties {
         authMethod = GitAuthMethod.Anonymous.some,
         subpath = "path/to/my-skill".some,
         localPath = none[String],
+        commit = none[GitCommitHash],
+        sourceHash = none[ContentHash],
+        installedHash = none[ContentHash],
         installedAt = "2026-01-01T00:00:00Z",
+        checkedAt = none[String],
       )
       SkillMetadata.writeSkillMetadata(tmpDir, metadata)
       Install.existingSubpathLabel(tmpDir) ==== "path/to/my-skill"
@@ -426,11 +439,15 @@ object InstallSpec extends Properties {
       RepoUrl("https://github.com/owner/repo").some,
       GitBranch("feature/New-Skill").some,
       GitAuthMethod.Ssh.some,
+      GitCommitHash("0123456789abcdef0123456789abcdef01234567").some,
       none[os.Path]
     )
-    val selected    = Install.buildGitMetadata(sourceInfo, "skills/demo")
-    val reinstalled = Install.buildGitMetadata(sourceInfo.copy(branch = none[GitBranch]), "skills/demo")
-    val local       = Install.buildLocalMetadata(sourceInfo.copy(sourceType = SkillSourceType.Local), os.pwd / "skill")
+    val gitHash     = ContentHash("89abcdef0123456789abcdef0123456789abcdef").some
+    val localHash   = ContentHash("fedcba9876543210fedcba9876543210fedcba98").some
+    val selected    = Install.buildGitMetadata(sourceInfo, "skills/demo", gitHash)
+    val reinstalled = Install.buildGitMetadata(sourceInfo.copy(branch = none[GitBranch]), "skills/demo", gitHash)
+    val local       =
+      Install.buildLocalMetadata(sourceInfo.copy(sourceType = SkillSourceType.Local), os.pwd / "skill", localHash)
     Result.all(
       List(
         selected.branch ==== sourceInfo.branch,
@@ -440,6 +457,12 @@ object InstallSpec extends Properties {
         reinstalled.branch ==== none[GitBranch],
         local.branch ==== none[GitBranch],
         local.repoUrl ==== none[RepoUrl],
+        selected.commit ==== sourceInfo.commit,
+        selected.sourceHash ==== gitHash,
+        selected.installedHash ==== none[ContentHash],
+        selected.checkedAt ==== none[String],
+        local.commit ==== none[GitCommitHash],
+        local.sourceHash ==== localHash,
       )
     )
   }

@@ -275,7 +275,10 @@ object Main {
           |
           |Re-fetches skills from their original install source (Git repo or
           |local path). When no skill names are given, all installed skills
-          |are updated. Skills without source metadata are skipped (re-install
+          |are checked. A skill whose source folder has not changed is reported
+          |as up to date and left untouched. Locally edited skills are not
+          |overwritten. Use --force to update regardless.
+          |Skills without source metadata are skipped (re-install
           |them once to enable updates).
           |Recorded branches are followed. If a branch is confirmed missing,
           |a terminal prompt offers default-branch tracking. Without terminal
@@ -285,10 +288,15 @@ object Main {
           |  aiskills update                              # Update all installed skills
           |  aiskills update commit                       # Update a single skill
           |  aiskills update commit review-pr             # Update specific skills
+          |  aiskills update --force commit               # Update even if unchanged or locally edited
           |""".stripMargin,
       ) {
-        Opts.arguments[String](metavar = "skill-names").orEmpty.map { names =>
-          Update.updateSkills(names)
+        val names = Opts.arguments[String](metavar = "skill-names").orEmpty
+        val force =
+          Opts.flag("force", "Update even when a skill is up to date or has local changes", short = "f").orFalse
+
+        (names, force).mapN { (ns, f) =>
+          Update.updateSkills(ns, if f then Update.UpdateMode.Force else Update.UpdateMode.Normal)
         }
       }
 

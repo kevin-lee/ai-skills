@@ -13,6 +13,9 @@ object SkillDisplay {
   private val SourceLabel     = "source:"
   private val SubpathLabel    = "subpath:"
   private val NameLabel       = "name:"
+  private val CommitLabel     = "commit:"
+  private val SourceHashLabel = "sourceHash:"
+  private val CheckedAtLabel  = "checkedAt:"
 
   private val ColonCol = 2 + BaseDirLabel.length // 17
 
@@ -53,6 +56,10 @@ object SkillDisplay {
             println(s"${padLabel(SubpathLabel).bold} <root>")
           case None => ()
         }
+
+        metadata.commit.foreach(commit => println(s"${padLabel(CommitLabel).bold} ${commit.value}"))
+        metadata.sourceHash.foreach(hash => println(s"${padLabel(SourceHashLabel).bold} ${hash.value}"))
+        metadata.checkedAt.foreach(at => println(s"${padLabel(CheckedAtLabel).bold} $at"))
     }
 
     val skillMdPath = skillPath / "SKILL.md"
