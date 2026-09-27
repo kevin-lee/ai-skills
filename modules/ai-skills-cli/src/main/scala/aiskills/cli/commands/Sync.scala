@@ -2,7 +2,7 @@ package aiskills.cli.commands
 
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{AgentsMd, Dirs, SkillHash, SkillMetadata, Skills, TerminalWidth, Yaml}
+import aiskills.core.utils.{AgentsMd, Dirs, SkillFiles, SkillHash, SkillMetadata, Skills, TerminalWidth, Yaml}
 import aiskills.core.{Agent, Skill, SkillLocation, SkillSourceMetadata, SyncOptions}
 import cats.syntax.all.*
 import cue4s.*
@@ -111,7 +111,7 @@ object Sync {
                       os.remove.all(targetPath)
                     } else ()
                     os.makeDir.all(targetDir)
-                    os.copy(s.path, targetPath, replaceExisting = true)
+                    SkillFiles.copyWithoutGit(s.path, targetPath, replaceExisting = true)
                     dropProjectCheckedAt(targetPath, targetLocation)
                     println(
                       s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
@@ -121,7 +121,7 @@ object Sync {
 
                   if !os.exists(targetPath) then {
                     os.makeDir.all(targetDir)
-                    os.copy(s.path, targetPath, replaceExisting = true)
+                    SkillFiles.copyWithoutGit(s.path, targetPath, replaceExisting = true)
                     dropProjectCheckedAt(targetPath, targetLocation)
                     println(
                       s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
@@ -212,7 +212,7 @@ object Sync {
                     os.remove.all(targetPath)
                   } else ()
                   os.makeDir.all(targetDir)
-                  os.copy(s.path, targetPath, replaceExisting = true)
+                  SkillFiles.copyWithoutGit(s.path, targetPath, replaceExisting = true)
                   dropProjectCheckedAt(targetPath, targetLocation)
                   println(
                     s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
@@ -222,7 +222,7 @@ object Sync {
 
                 if !os.exists(targetPath) then {
                   os.makeDir.all(targetDir)
-                  os.copy(s.path, targetPath, replaceExisting = true)
+                  SkillFiles.copyWithoutGit(s.path, targetPath, replaceExisting = true)
                   dropProjectCheckedAt(targetPath, targetLocation)
                   println(
                     s"\u2705 Synced: ${s.name} -> ${to.toString} (${targetLocation.toString.toLowerCase})".green
@@ -314,7 +314,7 @@ object Sync {
   ): Unit = {
     val newTargetPath = targetDir / newName
     os.makeDir.all(targetDir)
-    os.copy(sourcePath, newTargetPath, replaceExisting = true)
+    SkillFiles.copyWithoutGit(sourcePath, newTargetPath, replaceExisting = true)
     val skillMdPath   = newTargetPath / "SKILL.md"
     if os.exists(skillMdPath) then {
       val content = os.read(skillMdPath)
