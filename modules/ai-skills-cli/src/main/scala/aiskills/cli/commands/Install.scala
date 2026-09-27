@@ -276,7 +276,7 @@ object Install {
       val parts = source.split("/").toList
       parts match {
         case owner :: repo :: Nil =>
-          (RepoUrl(s"https://github.com/$source"), "")
+          (RepoUrl(s"https://github.com/$owner/$repo"), "")
         case owner :: repo :: rest =>
           (RepoUrl(s"https://github.com/$owner/$repo"), rest.mkString("/"))
         case _ =>
