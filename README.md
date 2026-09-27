@@ -1,18 +1,21 @@
 # ai-skills
 
-
-<p align="center">
-
+<div>
+  <!--suppress HtmlDeprecatedAttribute -->
+  <p align="center">
+  
   <img src="https://ai-skills.kevinly.dev/img/ai-skills-all.svg" alt="ai-skills logo" width="200" />
+  
+  </p>
 
-</p>
-
-<p align="center">
-  <a href="https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml" target="_blank"><img alt="[Scala Native] Build All" src="https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml/badge.svg" /></a>
-  <a href="https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml" target="_blank"><img alt="Release" src="https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml/badge.svg" /></a>
-  <a href="https://ai-skills.kevinly.dev" target="_blank"><img alt="Hits" src="https://hits.sh/github.com/kevin-lee/ai-skills.svg"/></a>
-  <img alt="GitHub Release" src="https://img.shields.io/github/v/release/kevin-lee/ai-skills">
-</p>
+  <!--suppress HtmlDeprecatedAttribute -->
+  <p align="center">
+    <a href="https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml" target="_blank"><img alt="[Scala Native] Build All" src="https://github.com/kevin-lee/ai-skills/actions/workflows/build-native.yml/badge.svg" /></a>
+    <a href="https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml" target="_blank"><img alt="Release" src="https://github.com/kevin-lee/ai-skills/actions/workflows/release.yml/badge.svg" /></a>
+    <a href="https://ai-skills.kevinly.dev" target="_blank"><img alt="Hits" src="https://hits.sh/github.com/kevin-lee/ai-skills.svg"/></a>
+    <img alt="GitHub Release" src="https://img.shields.io/github/v/release/kevin-lee/ai-skills">
+  </p>
+</div>
 
 `ai-skills` is a native CLI tool for managing reusable prompt skills for AI coding agents. It can install and manage AI agent skills (`SKILL.md`) and provides commands to `install`, `list`, `read`, `search`, `update`, `sync`, and `remove` skills across project-local and global directories for multiple AI agents. `search` covers the **skills.sh** and **agentskill.sh** marketplaces as well as your locally installed skills.
 
@@ -121,13 +124,13 @@ sbt cli/nativeLink
 This produces a standalone native binary at:
 
 ```
-modules/ai-skills-cli/target/scala-3.8.3/aiskills
+modules/ai-skills-cli/target/scala-3.8.4/aiskills
 ```
 
 Copy or symlink it to a location on your `PATH`:
 
 ```bash
-cp modules/ai-skills-cli/target/scala-3.8.3/aiskills /usr/local/bin/aiskills
+cp modules/ai-skills-cli/target/scala-3.8.4/aiskills /usr/local/bin/aiskills
 ```
 
 ## Please visit the website for a usage guide: https://ai-skills.kevinly.dev
@@ -145,7 +148,7 @@ This option also works with full Git repository addresses. It does not apply to 
 
 The selected branch is recorded in `.aiskills.json`, and `aiskills update` keeps following it. If Git confirms that the branch is missing, an interactive update asks whether to switch the affected installations to the repository's current default branch. Without terminal input, the update is skipped and the selection is retained. Authentication and network failures do not trigger a switch.
 
-Accepting the switch clears the recorded branch only for skills successfully updated from the default branch. It changes local tracking metadata and does not delete a remote branch. To return to default-branch tracking while the named branch still exists, reinstall without `--branch` and choose to overwrite the existing skill. Skipping the overwrite keeps the existing selection.
+Accepting the switch records default-branch tracking for every skill checked against the default branch, whether it was updated, already up to date or kept because of local changes. A skill that is skipped or fails to update keeps its recorded branch, for example when the default branch has no `SKILL.md` at the skill's path. It changes local tracking metadata and does not delete a remote branch. To return to default-branch tracking while the named branch still exists, reinstall without `--branch` and choose to overwrite the existing skill. Skipping the overwrite keeps the existing selection.
 
 ## Updating skills
 
@@ -173,16 +176,18 @@ aiskills update --force commit
 
 - `commit`: the Git commit the installed content came from (Git sources only)
 - `sourceHash`: the Git tree hash of the source skill folder
-- `installedHash`: the Git tree hash of the installed files, leaving out `.aiskills.json`, `.DS_Store`, `Thumbs.db` and `desktop.ini`
+- `installedHash`: the Git tree hash of the installed files, leaving out `.git`, `.aiskills.json`, `.DS_Store`, `Thumbs.db` and `desktop.ini`
 - `checkedAt`: when `update` last checked the skill (global skills only, so project repositories do not get a diff on every run)
 
 Skills installed by an older version of `aiskills` have no recorded version. Their next update replaces them and records one. Versions are computed with Git, also for local sources. A skill whose version cannot be recorded is updated on every run, as before. That happens when Git is not available, or when the source folder contains a symbolic link, because the link may point outside the folder.
 
+`install`, `update`, `search` and `sync` copy a skill folder without any `.git` entry, so a skill at the root of its repository does not become an embedded Git repository in a project that commits its skills.
+
+See https://ai-skills.kevinly.dev/docs/commands/update for the full details.
+
 ## Git Authentication
 
-`install`, `update`, and `search` share one clone implementation. For a `github.com` repository, in
-either URL form, it escalates through the available authentication methods instead of giving up
-after the first failure:
+`install`, `update`, and `search` share one clone implementation. For a `github.com` repository, in any URL form (`https://github.com/...`, `git@github.com:...` or `git://github.com/...`), it escalates through the available authentication methods instead of giving up after the first failure:
 
 | Order | Method              | What it does                                                       |
 |-------|---------------------|--------------------------------------------------------------------|
@@ -192,12 +197,11 @@ after the first failure:
 | 4     | `credential-helper` | https with the configured git credential helper                    |
 | 5     | `interactive`       | asks first, then hands the terminal to git for its own prompt      |
 
-The failure is only reported after every method has been tried, and the report says what was
-attempted. The interactive step only runs when stdin is a TTY and `--yes` was not passed, so CI and
-piped runs fail with the report instead of hanging.
+Methods that are not available are left out, for example `gh` when the `gh` CLI is not installed. When a skill records the method that worked last time, `update` tries that method first and then the rest in the order above. `interactive` always stays last.
 
-`ai-skills` never reads or stores credentials itself - git does its own prompting, and a personal
-access token works as the password.
+The failure is only reported after every method has been tried, and the report says what was attempted. The interactive step only runs when stdin is a TTY and `--yes` was not passed, so CI and piped runs fail with the report instead of hanging.
+
+`ai-skills` never reads or stores credentials itself - git does its own prompting, and a personal access token works as the password.
 
 See https://ai-skills.kevinly.dev/docs/git-authentication for the full details.
 
@@ -215,7 +219,7 @@ my-skill/
 
 ```markdown
 ---
-name: My Skill
+name: my-skill
 description: What this skill does
 ---
 
@@ -242,6 +246,8 @@ Skills are searched in the following directories, in priority order:
 | 12       | `~/.cursor/skills/`             | Global Cursor      |
 | 13       | `~/.gemini/skills/`             | Global Gemini      |
 | 14       | `~/.codeium/windsurf/skills/`   | Global Windsurf    |
+
+Global paths follow the environment variables in [Custom Global Config Locations](#custom-global-config-locations) when they are set. When the current directory is your home directory, the project entries are left out because they resolve to the same paths as the global ones.
 
 Skills in multiple directories are all shown by `list`. For `read`, use `--agent` with `--project`/`--global` to target specific directories.
 
