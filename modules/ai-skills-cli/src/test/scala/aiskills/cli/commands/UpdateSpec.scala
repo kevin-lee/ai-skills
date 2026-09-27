@@ -44,6 +44,8 @@ object UpdateSpec extends Properties {
     example("local edits with an unchanged source are kept", testLocalEditUnchangedSource),
     example("local edits with a changed source are kept until forced", testLocalEditChangedSource),
     example("a local source is versioned like a Git source", testLocalSourceVersioning),
+    example("updating a repo-root skill leaves out the clone's .git", testRepoRootGitLeftOut),
+    example("updating a local skill whose source is a Git working tree leaves out its .git", testLocalGitLeftOut),
     // normalizeRepoUrl
     example("normalizeRepoUrl: normalizes HTTPS GitHub URL", testNormalizeHttps),
     example("normalizeRepoUrl: normalizes HTTPS GitHub URL with .git", testNormalizeHttpsDotGit),
@@ -685,6 +687,75 @@ object UpdateSpec extends Properties {
         m2 ==== m1,
         Result.assert(os.read(installed / "SKILL.md").contains("source edit")),
         m3.flatMap(_.sourceHash) ==== SkillHash.sourceDirectoryHash(source).toOption,
+      )
+    )
+  }
+
+  private def testRepoRootGitLeftOut: Result = withTemp { dir =>
+    val repo      = dir / "root-remote"
+    writeSkill(repo, "root content")
+    git(repo, List("init", "--initial-branch=trunk"))
+    commitAll(repo, "Root skill")
+    val project   = dir / "project"
+    val installed = project / ".claude" / "skills" / s"${dir.last}-root"
+    writeSkill(installed, "old root")
+    // Stands for the .git an older install copied from the clone.
+    os.write(installed / ".git" / "HEAD", "ref: refs/heads/trunk\n", createFolders = true)
+    SkillMetadata.writeSkillMetadata(
+      installed,
+      metadata(none[GitBranch], none[String]).withRepoUrl(RepoUrl(s"file://$repo").some),
+    )
+
+    runUpdate(project, List(installed.last), UpdateMode.Normal)
+    val gitAfterUpdate = os.exists(installed / ".git")
+    val content        = os.read(installed / "SKILL.md")
+    val meta           = SkillMetadata.readSkillMetadata(installed)
+    val hash           = SkillHash.directoryHash(installed).toOption
+    runUpdate(project, List(installed.last), UpdateMode.Force)
+
+    Result.all(
+      List(
+        Result.assert(!gitAfterUpdate).log("Expected no .git after update"),
+        Result.assert(content.contains("root content")).log(s"SKILL.md: $content"),
+        meta.flatMap(_.installedHash) ==== hash,
+        Result.assert(!os.exists(installed / ".git")).log("Expected no .git after a forced update"),
+      )
+    )
+  }
+
+  private def testLocalGitLeftOut: Result = withTemp { dir =>
+    val source    = dir / "local-repo"
+    writeSkill(source, "local repo content")
+    git(source, List("init"))
+    commitAll(source, "Local skill")
+    val project   = dir / "project"
+    val installed = project / ".claude" / "skills" / s"${dir.last}-local-repo"
+    writeSkill(installed, "old local")
+    SkillMetadata.writeSkillMetadata(
+      installed,
+      SkillSourceMetadata(
+        source = source.toString,
+        sourceType = SkillSourceType.Local,
+        repoUrl = none[RepoUrl],
+        branch = none[GitBranch],
+        authMethod = none[GitAuthMethod],
+        subpath = none[String],
+        localPath = source.toString.some,
+        commit = none[GitCommitHash],
+        sourceHash = none[ContentHash],
+        installedHash = none[ContentHash],
+        installedAt = "2026-09-05T12:53:00.000Z",
+        checkedAt = none[String],
+      )
+    )
+
+    runUpdate(project, List(installed.last), UpdateMode.Normal)
+
+    Result.all(
+      List(
+        Result.assert(!os.exists(installed / ".git")).log("Expected no .git after update"),
+        Result.assert(os.read(installed / "SKILL.md").contains("local repo content")),
+        Result.assert(os.exists(source / ".git")).log("Expected the source .git to be kept"),
       )
     )
   }

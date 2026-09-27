@@ -54,6 +54,7 @@ object InstallSpec extends Properties {
     example("formatSize: formats bytes", testFormatBytes),
     example("formatSize: formats KB", testFormatKB),
     example("formatSize: formats MB", testFormatMB),
+    example("getDirectorySize leaves out .git", testDirectorySizeWithoutGit),
     // GitHub shorthand parsing
     example("GitHub shorthand: owner/repo", testGithubOwnerRepo),
     example("GitHub shorthand: owner/repo/path", testGithubOwnerRepoPath),
@@ -261,6 +262,15 @@ object InstallSpec extends Properties {
 
   private def testFormatMB: Result =
     Install.formatSize(1048576) ==== "1.0MB"
+
+  private def testDirectorySizeWithoutGit: Result = {
+    val tmpDir = os.temp.dir()
+    try {
+      os.write(tmpDir / "SKILL.md", "hello")
+      os.write(tmpDir / ".git" / "objects" / "pack", "x" * 100, createFolders = true)
+      Install.getDirectorySize(tmpDir) ==== 5L
+    } finally os.remove.all(tmpDir)
+  }
 
   // GitHub shorthand parsing
   private def testGithubOwnerRepo: Result = {

@@ -6,6 +6,7 @@ import aiskills.core.utils.{
   Dirs,
   LocalSearch,
   MarketplaceSearch,
+  SkillFiles,
   SkillHash,
   SkillMdFinder,
   SkillMetadata,
@@ -452,7 +453,7 @@ object Search {
                     sys.exit(code)
                   case Right(newName) =>
                     val newTargetPath = targetDir / newName
-                    os.copy(skillDir, newTargetPath, replaceExisting = true)
+                    SkillFiles.copyWithoutGit(skillDir, newTargetPath, replaceExisting = true)
                     val skillMdPath   = newTargetPath / "SKILL.md"
                     if os.exists(skillMdPath) then {
                       val content = os.read(skillMdPath)
@@ -485,7 +486,7 @@ object Search {
     targetPath: os.Path,
     metadata: SkillSourceMetadata,
   ): Unit = {
-    os.copy(skillDir, targetPath, replaceExisting = true)
+    SkillFiles.copyWithoutGit(skillDir, targetPath, replaceExisting = true)
     SkillMetadata.writeInstalledSkillMetadata(targetPath, metadata)
   }
 

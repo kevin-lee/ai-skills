@@ -2,7 +2,16 @@ package aiskills.cli.commands
 
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
-import aiskills.core.utils.{AgentsMd, Dirs, MarketplaceSkills, SkillHash, SkillMdFinder, SkillMetadata, Yaml}
+import aiskills.core.utils.{
+  AgentsMd,
+  Dirs,
+  MarketplaceSkills,
+  SkillFiles,
+  SkillHash,
+  SkillMdFinder,
+  SkillMetadata,
+  Yaml
+}
 import aiskills.core.{*, given}
 import cats.syntax.all.*
 import cue4s.*
@@ -45,11 +54,11 @@ object Install {
   def isPathInside(targetPath: os.Path, targetDir: os.Path): Boolean =
     targetPath.startsWith(targetDir)
 
-  /** Get directory size in bytes. */
+  /** Get directory size in bytes, leaving out `.git`, which is not copied. */
   def getDirectorySize(dirPath: os.Path): Long =
     if !os.exists(dirPath) then 0L
     else
-      os.walk(dirPath)
+      os.walk(dirPath, skip = _.last === ".git")
         .filter(os.isFile(_))
         .map(p => os.stat(p).size)
         .sum
@@ -397,7 +406,7 @@ object Install {
             System.err.println("Security error: Installation path outside target directory".red)
             throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
           } else {
-            os.copy(skillDir, targetPath, replaceExisting = true)
+            SkillFiles.copyWithoutGit(skillDir, targetPath, replaceExisting = true)
             SkillMetadata.writeInstalledSkillMetadata(targetPath, metadata)
 
             println(s"\u2705 Installed: $skillName".green)
@@ -446,7 +455,7 @@ object Install {
               System.err.println("Security error: Installation path outside target directory".red)
               throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
             } else {
-              os.copy(skillDir, targetPath, replaceExisting = true)
+              SkillFiles.copyWithoutGit(skillDir, targetPath, replaceExisting = true)
               SkillMetadata.writeInstalledSkillMetadata(targetPath, metadata)
 
               println(s"\u2705 Installed: $skillName".green)
@@ -585,7 +594,7 @@ object Install {
                 System.err.println("Security error: Installation path outside target directory".red)
                 count
               } else {
-                os.copy(info.skillDir, info.targetPath, replaceExisting = true)
+                SkillFiles.copyWithoutGit(info.skillDir, info.targetPath, replaceExisting = true)
                 SkillMetadata.writeInstalledSkillMetadata(
                   info.targetPath,
                   buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
@@ -612,7 +621,7 @@ object Install {
                 System.err.println("Security error: Installation path outside target directory".red)
                 (count, bulk)
               } else {
-                os.copy(info.skillDir, info.targetPath, replaceExisting = true)
+                SkillFiles.copyWithoutGit(info.skillDir, info.targetPath, replaceExisting = true)
                 SkillMetadata.writeInstalledSkillMetadata(
                   info.targetPath,
                   buildMetadataFromSource(sourceInfo, info.skillDir, repoDir),
@@ -820,7 +829,7 @@ object Install {
       System.err.println("Security error: Installation path outside target directory".red)
       throw SkillInstallException(1) // scalafix:ok DisableSyntax.throw
     } else {
-      os.copy(sourceDir, targetPath, replaceExisting = true)
+      SkillFiles.copyWithoutGit(sourceDir, targetPath, replaceExisting = true)
       val skillMdPath = targetPath / "SKILL.md"
       if os.exists(skillMdPath) then {
         val content = os.read(skillMdPath)

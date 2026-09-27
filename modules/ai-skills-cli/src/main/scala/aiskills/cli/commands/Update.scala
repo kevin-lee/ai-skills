@@ -6,7 +6,7 @@ import cats.*
 import cats.derived.*
 import cue4s.*
 import scala.util.Try
-import aiskills.core.utils.{Dirs, SkillHash, SkillMetadata, SkillNames, Skills, Yaml}
+import aiskills.core.utils.{Dirs, SkillFiles, SkillHash, SkillMetadata, SkillNames, Skills, Yaml}
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
@@ -238,7 +238,7 @@ object Update {
       val candidate = stage / "candidate"
       val backup    = stage / "backup"
       val prepared  = Try {
-        os.copy(sourceDir, candidate)
+        SkillFiles.copyWithoutGit(sourceDir, candidate, replaceExisting = false)
         reapplyRename(candidate, metadata)
         SkillMetadata.writeInstalledSkillMetadata(candidate, metadata)
       }.toEither.left.map(ex => GitUpdateError.PreparationFailed(failureDetail(ex)))
@@ -606,7 +606,7 @@ object Update {
       sys.exit(1)
     } else {
       os.remove.all(targetPath)
-      os.copy(sourceDir, targetPath)
+      SkillFiles.copyWithoutGit(sourceDir, targetPath, replaceExisting = false)
     }
   }
 
