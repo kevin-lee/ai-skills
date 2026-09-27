@@ -77,7 +77,7 @@ lazy val props = new {
   val RepoName       = gitHubRepo.fold("ai-skills")(_.nameToString)
   val ProjectName    = RepoName
 
-  val ScalaVersion = "3.8.3"
+  val ScalaVersion = "3.8.4"
 
   val Org     = "io.kevinlee"
   val OrgName = "Kevin's Code"
@@ -88,21 +88,21 @@ lazy val props = new {
 
   val KittensVersion = "3.5.0"
 
-  val CirceVersion = "0.14.15"
+  val CirceVersion = "0.14.16"
 
   val CirceYamlVersion = "0.16.1"
 
-  val Refined4sVersion = "1.20.0"
+  val Refined4sVersion = "1.21.0"
 
-  val HedgehogVersion = "0.13.0"
+  val HedgehogVersion = "0.15.0"
 
-  val DeclineVersion = "2.6.1"
+  val DeclineVersion = "2.6.2"
 
-  val Cue4sVersion = "0.0.12"
+  val Cue4sVersion = "0.0.13"
 
-  val ExtrasVersion = "0.51.0"
+  val ExtrasVersion = "0.56.0"
 
-  val ScalaXmlVersion = "2.4.0"
+  val ScalaXmlVersion = "2.5.0"
 
   val JustSpinnerVersion = "0.1.0"
 
