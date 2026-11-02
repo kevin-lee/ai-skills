@@ -3,9 +3,17 @@ on:
   pull_request_target:
     types: [ opened, reopened, edited ]
 
+permissions:
+  contents: read
+
 jobs:
   pr-labeler:
     runs-on: ubuntu-latest
+    permissions:
+      # pr-labeler-action reads its configuration file from the repository.
+      contents: read
+      # pr-labeler-action adds labels to the pull request.
+      pull-requests: write
     steps:
       - uses: TimonVS/pr-labeler-action@v5
         with:

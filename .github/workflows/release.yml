@@ -5,6 +5,9 @@ on:
     tags:
       - '*'
 
+permissions:
+  contents: read
+
 env:
   GH_JAVA_VERSION: "21"
   GH_JAVA_DISTRIBUTION: "temurin"
@@ -103,6 +106,9 @@ jobs:
   gh-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
+    permissions:
+      # devOopsGitHubRelease creates the GitHub release.
+      contents: write
 
     runs-on: ubuntu-latest
     steps:
@@ -130,6 +136,9 @@ jobs:
 
   native-gh-release:
     needs: gh-release
+    permissions:
+      # devOopsGitHubReleaseUploadArtifacts uploads the native binaries to the GitHub release.
+      contents: write
     runs-on: ${{ matrix.os.value }}
     strategy:
       matrix:
