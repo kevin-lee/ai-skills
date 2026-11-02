@@ -5,10 +5,16 @@ on:
     branches:
       - main # default branch of the project
 
+permissions:
+  contents: read
+
 jobs:
   update-graph:
     name: Update Dependency Graph
     runs-on: ubuntu-latest
+    permissions:
+      # sbt-dependency-submission sends the dependency snapshot to the dependency graph API.
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:

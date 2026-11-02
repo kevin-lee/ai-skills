@@ -9,6 +9,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 env:
   GH_JAVA_VERSION: "21"
   GH_JAVA_DISTRIBUTION: "temurin"
