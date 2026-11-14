@@ -10,6 +10,7 @@ import Update.{
   ResolvedUpdateSource,
   ResultStatus,
   ScopeDecision,
+  ScopeTargets,
   SourceState,
   SwitchBranchChoice,
   UpdateDecision,
@@ -44,7 +45,20 @@ object UpdateSpec extends Properties {
     example("decideScope uses both scopes without a terminal", testDecideScopeNoTerminal),
     example("decideScope resolves one scope without a prompt", testDecideScopeResolved),
     example("decideScope asks when the targets are in both scopes", testDecideScopeAsk),
+    example(
+      "decideScope lets the scope flags win over no terminal and one-scope targets",
+      testDecideScopeFlagPriority,
+    ),
+    example("scopeTargets keeps every skill when no name and no flag is given", testScopeTargetsAll),
+    example("scopeTargets keeps only the flag scopes", testScopeTargetsFlags),
+    example(
+      "scopeTargets keeps the requested names in both scopes and reports unknown names",
+      testScopeTargetsNames,
+    ),
+    example("scopeTargets reports a name that is only in the other scope as missing", testScopeTargetsOtherScope),
+    example("resolveScope returns the locations of Use and Resolved", testResolveScope),
     example("a scope flag leaves the skills of the other scope untouched", testScopeFlagFilters),
+    example("both scope flags update the project skill", testBothScopeFlags),
     example("an unchanged source leaves an up-to-date skill untouched", testUnchangedSource),
     example("a commit to another path keeps a skill up to date", testCommitToOtherPath),
     example("local edits with an unchanged source are kept", testLocalEditUnchangedSource),
@@ -579,6 +593,13 @@ object UpdateSpec extends Properties {
   private val bothScopeTargets: List[Skill] =
     List(scopeSkill("commit", SkillLocation.Global), scopeSkill("commit", SkillLocation.Project))
 
+  private val scopeTargetSkills: List[Skill] =
+    List(
+      scopeSkill("commit", SkillLocation.Global),
+      scopeSkill("review", SkillLocation.Global),
+      scopeSkill("commit", SkillLocation.Project),
+    )
+
   private def testDecideScopeFlags: Result =
     Result.all(
       List(
@@ -620,6 +641,56 @@ object UpdateSpec extends Properties {
   private def testDecideScopeAsk: Result =
     Update.decideScope(bothScopeTargets, Set.empty, Interactivity.Allowed) ==== ScopeDecision.Ask
 
+  private def testDecideScopeFlagPriority: Result =
+    Result.all(
+      List(
+        Update.decideScope(bothScopeTargets, Set(SkillLocation.Project), Interactivity.NotAllowed) ====
+          ScopeDecision.Use(List(SkillLocation.Project)),
+        Update.decideScope(
+          List(scopeSkill("commit", SkillLocation.Project)),
+          Set(SkillLocation.Global),
+          Interactivity.Allowed,
+        ) ==== ScopeDecision.Use(List(SkillLocation.Global)),
+      )
+    )
+
+  private def testScopeTargetsAll: Result =
+    Update.scopeTargets(scopeTargetSkills, Nil, Set.empty) ==== ScopeTargets(Nil, scopeTargetSkills)
+
+  private def testScopeTargetsFlags: Result =
+    Result.all(
+      List(
+        Update.scopeTargets(scopeTargetSkills, Nil, Set(SkillLocation.Global)) ====
+          ScopeTargets(
+            Nil,
+            List(scopeSkill("commit", SkillLocation.Global), scopeSkill("review", SkillLocation.Global)),
+          ),
+        Update.scopeTargets(scopeTargetSkills, Nil, Set(SkillLocation.Project, SkillLocation.Global)) ====
+          ScopeTargets(Nil, scopeTargetSkills),
+      )
+    )
+
+  private def testScopeTargetsNames: Result =
+    Update.scopeTargets(scopeTargetSkills, List("commit", "unknown"), Set.empty) ====
+      ScopeTargets(
+        List("unknown"),
+        List(scopeSkill("commit", SkillLocation.Global), scopeSkill("commit", SkillLocation.Project)),
+      )
+
+  private def testScopeTargetsOtherScope: Result =
+    Update.scopeTargets(scopeTargetSkills, List("review"), Set(SkillLocation.Project)) ====
+      ScopeTargets(List("review"), Nil)
+
+  private def testResolveScope: Result =
+    Result.all(
+      List(
+        Update.resolveScope(ScopeDecision.Use(List(SkillLocation.Global, SkillLocation.Project))) ====
+          List(SkillLocation.Global, SkillLocation.Project).asRight[Int],
+        Update.resolveScope(ScopeDecision.Resolved(SkillLocation.Project)) ====
+          List(SkillLocation.Project).asRight[Int],
+      )
+    )
+
   private def testScopeFlagFilters: Result = withTemp { dir =>
     val fixture      = gitFixture(dir)
     val installed    = fixture.skillsDir / s"${dir.last}-present"
@@ -635,6 +706,21 @@ object UpdateSpec extends Properties {
         Result.assert(afterProject.contains("new default content")).log(s"afterProject: $afterProject"),
       )
     )
+  }
+
+  private def testBothScopeFlags: Result = withTemp { dir =>
+    val fixture   = gitFixture(dir)
+    val installed = fixture.skillsDir / s"${dir.last}-present"
+    writeSkill(installed, "old present")
+    SkillMetadata.writeSkillMetadata(installed, fileRemoteMetadata(fixture.repo, "skills/present"))
+    runUpdate(
+      fixture.project,
+      List(installed.last),
+      UpdateMode.Normal,
+      Set(SkillLocation.Project, SkillLocation.Global),
+    )
+    val content   = os.read(installed / "SKILL.md")
+    Result.assert(content.contains("new default content")).log(s"content: $content")
   }
 
   private def testUnchangedSource: Result = withTemp { dir =>
