@@ -112,13 +112,13 @@ object Install {
   }
 
   private def promptForAgents(): List[Agent] = {
-    val agentLabels = Agent.all.map(_.toString)
+    val agentLabels = Agent.all.map(InteractiveHelper.targetAgentLabel)
 
     aiskills.cli.SigintHandler.install()
     val result = Prompts.sync.use { prompts =>
       prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select target agent(s)", agentLabels)) match {
         case Completion.Finished(selectedLabels) =>
-          Agent.all.filter(a => selectedLabels.contains(a.toString)).asRight
+          InteractiveHelper.selectAgentsByLabels(Agent.all, selectedLabels).asRight
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
           0.asLeft
@@ -195,9 +195,11 @@ object Install {
     )
 
     try {
+      val deduped = Dirs.dedupeAgentLocationTargets(agents, locations.toList)
+      InteractiveHelper.printSkippedTargets(deduped.skipped)
+
       for {
-        agent    <- agents
-        location <- locations
+        (agent, location) <- deduped.kept
       } do {
         val isProject = location === SkillLocation.Project
         val targetDir = Dirs.getSkillsDir(agent, location)
@@ -213,6 +215,7 @@ object Install {
         val branchLabel = options.branch.fold("")(b => s" (branch: ${b.value})")
         println(s"Installing from: ${source.cyan}$branchLabel")
         println(s"Location: $locationDisplay")
+        InteractiveHelper.sharedDirNote(agent, location).foreach(note => println(note.yellow))
         if agents.length <= 1 && locations.size <= 1 then {
           if !isProject && os.pwd =!= os.home then println(
             s"Global install selected (${Dirs.displaySkillsDir(agent, SkillLocation.Global)}). Omit --global for ./${Dirs.displaySkillsDir(agent, SkillLocation.Project)}.".dim

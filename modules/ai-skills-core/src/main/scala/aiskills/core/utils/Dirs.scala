@@ -1,6 +1,14 @@
 package aiskills.core.utils
 
-import aiskills.core.{Agent, GlobalDirOverride, GlobalDirResolution, SkillLocation, given}
+import aiskills.core.{
+  Agent,
+  DedupedTargets,
+  GlobalDirOverride,
+  GlobalDirResolution,
+  SkillLocation,
+  SkippedTarget,
+  given
+}
 import cats.syntax.all.*
 
 object Dirs {
@@ -125,12 +133,15 @@ object Dirs {
   /** Get all searchable skill directories in priority order.
     * Priority:
     *   1. Project universal (.agents)
-    *   2. Project agent-specific (alphabetical by agent name)
+    *   2. Project agent-specific (alphabetical by agent name, except that Antigravity is directly before Gemini)
     *   3. Global universal (~/.agents)
-    *   4. Global agent-specific (alphabetical by agent name)
+    *   4. Global agent-specific (alphabetical by agent name, except that Antigravity is directly before Gemini)
     *
     * When pwd is the home directory, project entries are omitted
     * because they would resolve to the same paths as global entries.
+    *
+    * When two entries have the same path (for example project Universal and project Antigravity
+    * both use `.agents/skills`), only the first entry is kept.
     */
   def getSearchDirs(): List[(os.Path, Agent, SkillLocation)] =
     getSearchDirs(os.pwd)
@@ -139,7 +150,14 @@ object Dirs {
     pwd: os.Path,
     env: Map[String, String] = sys.env // scalafix:ok DisableSyntax.defaultArgs
   ): List[(os.Path, Agent, SkillLocation)] = {
-    val agentsSorted = Agent.allNonUniversal.sortBy(_.toString)
+    val agentsSorted = Agent
+      .allNonUniversal
+      .filterNot(_ === Agent.Antigravity)
+      .sortBy(_.toString)
+      .flatMap {
+        case Agent.Gemini => List(Agent.Antigravity, Agent.Gemini)
+        case agent => List(agent)
+      }
 
     val globalUniversal = List(
       (getSkillsDir(Agent.Universal, SkillLocation.Global, env), Agent.Universal, SkillLocation.Global)
@@ -160,5 +178,50 @@ object Dirs {
       }
     }
   }
+
+  /** Other agents that use the same skills dir as `agent` at `location`,
+    * e.g. Universal and Antigravity for Project.
+    */
+  def sharedSkillsDirAgents(
+    agent: Agent,
+    location: SkillLocation,
+    env: Map[String, String] = sys.env // scalafix:ok DisableSyntax.defaultArgs
+  ): List[Agent] = {
+    val dir = getSkillsDir(agent, location, env)
+    Agent.all.filter(other => other =!= agent && getSkillsDir(other, location, env) === dir)
+  }
+
+  /** Keep only the first target for each skills dir. The other targets are returned as skipped,
+    * with the kept agent that has the same dir. The input order is kept in both lists.
+    */
+  def dedupeTargetsBySkillsDir(
+    targets: List[(Agent, SkillLocation)],
+    env: Map[String, String] = sys.env // scalafix:ok DisableSyntax.defaultArgs
+  ): DedupedTargets = {
+    val (_, kept, skipped) =
+      targets.foldLeft((Map.empty[os.Path, Agent], List.empty[(Agent, SkillLocation)], List.empty[SkippedTarget])) {
+        case ((seen, kept, skipped), (agent, location)) =>
+          val dir = getSkillsDir(agent, location, env)
+          seen.get(dir) match {
+            case Some(sameAs) => (seen, kept, SkippedTarget(agent, location, sameAs) :: skipped)
+            case None => (seen + (dir -> agent), (agent, location) :: kept, skipped)
+          }
+      }
+    DedupedTargets(kept = kept.reverse, skipped = skipped.reverse)
+  }
+
+  /** Build agent x location targets (agent first) and keep only the first target for each skills dir. */
+  def dedupeAgentLocationTargets(
+    agents: List[Agent],
+    locations: List[SkillLocation],
+    env: Map[String, String] = sys.env // scalafix:ok DisableSyntax.defaultArgs
+  ): DedupedTargets =
+    dedupeTargetsBySkillsDir(
+      for {
+        agent    <- agents
+        location <- locations
+      } yield (agent, location),
+      env
+    )
 
 }

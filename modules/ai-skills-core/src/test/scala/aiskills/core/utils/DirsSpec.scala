@@ -1,6 +1,6 @@
 package aiskills.core.utils
 
-import aiskills.core.{Agent, SkillLocation, given}
+import aiskills.core.{Agent, DedupedTargets, SkillLocation, SkippedTarget, given}
 import cats.syntax.all.*
 import hedgehog.*
 import hedgehog.runner.*
@@ -16,13 +16,17 @@ object DirsSpec extends Properties {
     example("getSkillsDir: global Copilot uses .copilot (asymmetric)", testGlobalCopilot),
     example("getSkillsDir: project Cursor uses .cursor", testProjectCursor),
     example("getSkillsDir: project Codex uses .codex", testProjectCodex),
+    example("getSkillsDir: project Antigravity uses .agents (same as Universal)", testProjectAntigravity),
     example("getSkillsDir: project Gemini uses .gemini", testProjectGemini),
     example("getSkillsDir: project Windsurf uses .windsurf", testProjectWindsurf),
+    example("getSkillsDir: global Antigravity uses .gemini/config (asymmetric)", testGlobalAntigravity),
     example("getSkillsDir: global Windsurf uses .codeium/windsurf (asymmetric)", testGlobalWindsurf),
     example("displaySkillsDir: project Universal", testDisplayProjectUniversal),
     example("displaySkillsDir: global Universal", testDisplayGlobalUniversal),
     example("displaySkillsDir: project Claude", testDisplayProjectClaude),
     example("displaySkillsDir: global Claude", testDisplayGlobalClaude),
+    example("displaySkillsDir: project Antigravity", testDisplayProjectAntigravity),
+    example("displaySkillsDir: global Antigravity (asymmetric)", testDisplayGlobalAntigravity),
     example("displaySkillsDir: project Windsurf", testDisplayProjectWindsurf),
     example("displaySkillsDir: global Windsurf (asymmetric)", testDisplayGlobalWindsurf),
     example("displaySkillsDir: project Copilot", testDisplayProjectCopilot),
@@ -30,11 +34,15 @@ object DirsSpec extends Properties {
     example("displayPath: global path replaces home with ~", testDisplayPathGlobal),
     example("displayPath: project path shows relative to pwd", testDisplayPathProject),
     example("displayPath: only replaces home prefix, not duplicates in path", testDisplayPathHomeDuplicate),
-    example("getSearchDirs: returns 14 dirs", testSearchDirsCount),
+    example("getSearchDirs: returns 15 dirs", testSearchDirsCount),
     example("getSearchDirs: correct priority order", testSearchDirsOrder),
+    example(
+      "getSearchDirs: project Antigravity is merged into project Universal",
+      testSearchDirsProjectAntigravityMerged
+    ),
     example("getSearchDirs: first is project universal", testSearchDirsFirst),
-    example("getSearchDirs: returns 7 global-only dirs when pwd is home", testSearchDirsPwdIsHome),
-    example("getSearchDirs: returns 14 dirs when pwd is not home", testSearchDirsPwdIsNotHome),
+    example("getSearchDirs: returns 8 global-only dirs when pwd is home", testSearchDirsPwdIsHome),
+    example("getSearchDirs: returns 15 dirs when pwd is not home", testSearchDirsPwdIsNotHome),
     example("getSearchDirs: no-arg delegates to overload with os.pwd", testSearchDirsNoArgDelegates),
     example("getSkillsDir: global Claude honors CLAUDE_CONFIG_DIR", testEnvClaudeConfigDir),
     example("getSkillsDir: global Codex honors CODEX_HOME", testEnvCodexHome),
@@ -42,8 +50,8 @@ object DirsSpec extends Properties {
     example("getSkillsDir: global Gemini honors GEMINI_CLI_HOME as home root", testEnvGeminiCliHome),
     example("getSkillsDir: global Cursor does not honor CURSOR_CONFIG_DIR", testEnvCursorNotHonored),
     example(
-      "getSkillsDir: global Universal and Windsurf ignore all honored env vars",
-      testEnvUniversalWindsurfNotHonored
+      "getSkillsDir: global Universal, Antigravity and Windsurf ignore all honored env vars",
+      testEnvUniversalAntigravityWindsurfNotHonored
     ),
     example("getSkillsDir: blank or empty env var value falls back to default", testEnvBlankValue),
     example("getSkillsDir: env var value with ~ expands to home", testEnvTildeExpansion),
@@ -56,6 +64,16 @@ object DirsSpec extends Properties {
     example("envVarAnnotationFor: Some for paths under overridden base", testEnvVarAnnotationFor),
     example("getSearchDirs: global entries honor env overrides", testSearchDirsEnvOverride),
     example("getSearchDirs: dedup when override collides with project dir", testSearchDirsEnvOverrideDedup),
+    example("sharedSkillsDirAgents: Universal and Antigravity share the project dir only", testSharedSkillsDirAgents),
+    example("dedupeTargetsBySkillsDir: keeps the first target for each dir", testDedupeTargetsBySkillsDir),
+    example(
+      "dedupeTargetsBySkillsDir: env override that makes global Claude the project dir",
+      testDedupeTargetsEnvOverrideCollision
+    ),
+    example(
+      "dedupeAgentLocationTargets: agent first, then location, with the shared dir skipped",
+      testDedupeAgentLocationTargets
+    ),
   )
 
   private def testProjectUniversal: Result =
@@ -84,6 +102,16 @@ object DirsSpec extends Properties {
   private def testProjectCodex: Result =
     Dirs.getSkillsDir(Agent.Codex, SkillLocation.Project) ==== (os.pwd / ".codex" / "skills")
 
+  private def testProjectAntigravity: Result =
+    Dirs.getSkillsDir(Agent.Antigravity, SkillLocation.Project) ==== (os.pwd / ".agents" / "skills")
+
+  private def testGlobalAntigravity: Result =
+    Dirs.getSkillsDir(
+      Agent.Antigravity,
+      SkillLocation.Global,
+      emptyEnv
+    ) ==== (os.home / ".gemini" / "config" / "skills")
+
   private def testProjectGemini: Result =
     Dirs.getSkillsDir(Agent.Gemini, SkillLocation.Project) ==== (os.pwd / ".gemini" / "skills")
 
@@ -108,6 +136,12 @@ object DirsSpec extends Properties {
 
   private def testDisplayGlobalClaude: Result =
     Dirs.displaySkillsDir(Agent.Claude, SkillLocation.Global, emptyEnv) ==== "~/.claude/skills"
+
+  private def testDisplayProjectAntigravity: Result =
+    Dirs.displaySkillsDir(Agent.Antigravity, SkillLocation.Project) ==== ".agents/skills"
+
+  private def testDisplayGlobalAntigravity: Result =
+    Dirs.displaySkillsDir(Agent.Antigravity, SkillLocation.Global, emptyEnv) ==== "~/.gemini/config/skills"
 
   private def testDisplayProjectWindsurf: Result =
     Dirs.displaySkillsDir(Agent.Windsurf, SkillLocation.Project) ==== ".windsurf/skills"
@@ -139,21 +173,23 @@ object DirsSpec extends Properties {
 
   private def testSearchDirsCount: Result = {
     val dirs = Dirs.getSearchDirs(nonHomePwd, emptyEnv)
-    dirs.length ==== 14
+    dirs.length ==== 15
   }
 
   private def testSearchDirsOrder: Result = {
     val dirs   = Dirs.getSearchDirs(nonHomePwd, emptyEnv)
     val agents = dirs.map { case (_, agent, _) => agent }
-    // 1. Project universal
-    // 2-7. Project agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini, Windsurf)
+    // 1. Project universal (project Antigravity uses the same .agents/skills, so it is merged into this entry)
+    // 2-7. Project agent-specific (alphabetical, except Antigravity directly before Gemini:
+    //      Claude, Codex, Copilot, Cursor, Gemini, Windsurf)
     // 8. Global universal
-    // 9-14. Global agent-specific (alphabetical: Claude, Codex, Copilot, Cursor, Gemini, Windsurf)
+    // 9-15. Global agent-specific (alphabetical, except Antigravity directly before Gemini:
+    //       Claude, Codex, Copilot, Cursor, Antigravity, Gemini, Windsurf)
     Result.all(
       List(
         // Project universal
         dirs.headOption ==== (nonHomePwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project).some,
-        // Project agent-specific (alphabetical)
+        // Project agent-specific
         agents(1) ==== Agent.Claude,
         agents(2) ==== Agent.Codex,
         agents(3) ==== Agent.Copilot,
@@ -164,15 +200,31 @@ object DirsSpec extends Properties {
         Result.assert(dirs.take(7).forall { case (_, _, location) => location === SkillLocation.Project }),
         // Global universal
         dirs(7) ==== (os.home / ".agents" / "skills", Agent.Universal, SkillLocation.Global),
-        // Global agent-specific (alphabetical)
+        // Global agent-specific
         agents(8) ==== Agent.Claude,
         agents(9) ==== Agent.Codex,
         agents(10) ==== Agent.Copilot,
         agents(11) ==== Agent.Cursor,
-        agents(12) ==== Agent.Gemini,
-        agents(13) ==== Agent.Windsurf,
+        agents(12) ==== Agent.Antigravity,
+        agents(13) ==== Agent.Gemini,
+        agents(14) ==== Agent.Windsurf,
         // All global dirs are Global location
         Result.assert(dirs.drop(7).forall { case (_, _, location) => location === SkillLocation.Global }),
+      )
+    )
+  }
+
+  private def testSearchDirsProjectAntigravityMerged: Result = {
+    val dirs              = Dirs.getSearchDirs(nonHomePwd, emptyEnv)
+    val projectAgentsDirs = dirs.filter { case (path, _, _) => path === (nonHomePwd / ".agents" / "skills") }
+    Result.all(
+      List(
+        Result.assert(!dirs.exists {
+          case (_, agent, location) => agent === Agent.Antigravity && location === SkillLocation.Project
+        }),
+        projectAgentsDirs ==== List(
+          (nonHomePwd / ".agents" / "skills", Agent.Universal, SkillLocation.Project)
+        ),
       )
     )
   }
@@ -193,7 +245,7 @@ object DirsSpec extends Properties {
     val dirs = Dirs.getSearchDirs(os.home, emptyEnv)
     Result.all(
       List(
-        dirs.length ==== 7,
+        dirs.length ==== 8,
         Result.assert(dirs.forall { case (_, _, location) => location === SkillLocation.Global }),
       )
     )
@@ -203,7 +255,7 @@ object DirsSpec extends Properties {
     val dirs = Dirs.getSearchDirs(nonHomePwd, emptyEnv)
     Result.all(
       List(
-        dirs.length ==== 14,
+        dirs.length ==== 15,
         Result.assert(dirs.take(7).forall { case (_, _, location) => location === SkillLocation.Project }),
         Result.assert(dirs.drop(7).forall { case (_, _, location) => location === SkillLocation.Global }),
       )
@@ -249,11 +301,13 @@ object DirsSpec extends Properties {
     "COPILOT_HOME"      -> "/custom/copilot",
   )
 
-  private def testEnvUniversalWindsurfNotHonored: Result =
+  private def testEnvUniversalAntigravityWindsurfNotHonored: Result =
     Result.all(
       List(
         Dirs.getSkillsDir(Agent.Universal, SkillLocation.Global, allHonoredEnvVars) ====
           (os.home / ".agents" / "skills"),
+        Dirs.getSkillsDir(Agent.Antigravity, SkillLocation.Global, allHonoredEnvVars) ====
+          (os.home / ".gemini" / "config" / "skills"),
         Dirs.getSkillsDir(Agent.Windsurf, SkillLocation.Global, allHonoredEnvVars) ====
           (os.home / ".codeium" / "windsurf" / "skills"),
       )
@@ -352,7 +406,7 @@ object DirsSpec extends Properties {
     val dirs = Dirs.getSearchDirs(nonHomePwd, env)
     Result.all(
       List(
-        dirs.length ==== 14,
+        dirs.length ==== 15,
         dirs(8) ==== (os.root / "custom" / "claude" / "skills", Agent.Claude, SkillLocation.Global),
         Result.assert(dirs.take(7).forall {
           case (path, _, location) =>
@@ -368,11 +422,64 @@ object DirsSpec extends Properties {
     val claudeSkillsEntries = dirs.filter { case (path, _, _) => path === (nonHomePwd / ".claude" / "skills") }
     Result.all(
       List(
-        dirs.length ==== 13,
+        dirs.length ==== 14,
         claudeSkillsEntries.map { case (_, agent, location) => (agent, location) } ====
           List((Agent.Claude, SkillLocation.Project)),
       )
     )
   }
+
+  private def testSharedSkillsDirAgents: Result =
+    Result.all(
+      List(
+        Dirs.sharedSkillsDirAgents(Agent.Antigravity, SkillLocation.Project, emptyEnv) ==== List(Agent.Universal),
+        Dirs.sharedSkillsDirAgents(Agent.Universal, SkillLocation.Project, emptyEnv) ==== List(Agent.Antigravity),
+        Dirs.sharedSkillsDirAgents(Agent.Antigravity, SkillLocation.Global, emptyEnv) ==== Nil,
+        Dirs.sharedSkillsDirAgents(Agent.Claude, SkillLocation.Project, emptyEnv) ==== Nil,
+      )
+    )
+
+  private def testDedupeTargetsBySkillsDir: Result = {
+    val targets = List(
+      (Agent.Universal, SkillLocation.Project),
+      (Agent.Antigravity, SkillLocation.Project),
+      (Agent.Antigravity, SkillLocation.Global),
+      (Agent.Claude, SkillLocation.Project),
+    )
+    Dirs.dedupeTargetsBySkillsDir(targets, emptyEnv) ==== DedupedTargets(
+      kept = List(
+        (Agent.Universal, SkillLocation.Project),
+        (Agent.Antigravity, SkillLocation.Global),
+        (Agent.Claude, SkillLocation.Project),
+      ),
+      skipped = List(SkippedTarget(Agent.Antigravity, SkillLocation.Project, Agent.Universal)),
+    )
+  }
+
+  private def testDedupeTargetsEnvOverrideCollision: Result = {
+    val env     = Map("CLAUDE_CONFIG_DIR" -> (os.pwd / ".claude").toString)
+    val targets = List(
+      (Agent.Claude, SkillLocation.Project),
+      (Agent.Claude, SkillLocation.Global),
+    )
+    Dirs.dedupeTargetsBySkillsDir(targets, env) ==== DedupedTargets(
+      kept = List((Agent.Claude, SkillLocation.Project)),
+      skipped = List(SkippedTarget(Agent.Claude, SkillLocation.Global, Agent.Claude)),
+    )
+  }
+
+  private def testDedupeAgentLocationTargets: Result =
+    Dirs.dedupeAgentLocationTargets(
+      List(Agent.Universal, Agent.Antigravity),
+      List(SkillLocation.Project, SkillLocation.Global),
+      emptyEnv,
+    ) ==== DedupedTargets(
+      kept = List(
+        (Agent.Universal, SkillLocation.Project),
+        (Agent.Universal, SkillLocation.Global),
+        (Agent.Antigravity, SkillLocation.Global),
+      ),
+      skipped = List(SkippedTarget(Agent.Antigravity, SkillLocation.Project, Agent.Universal)),
+    )
 
 }

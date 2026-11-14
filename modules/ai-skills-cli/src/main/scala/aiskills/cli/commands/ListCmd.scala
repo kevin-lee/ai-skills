@@ -22,15 +22,21 @@ object ListCmd {
     val agents: List[Agent] =
       options.agent.getOrElse(Agent.all)
 
-    val skills = for {
-      agent    <- agents
-      location <- locations
-      skill    <- Skills.findSkillsByAgent(agent, location)
-    } yield skill
+    val skills = collectSkills(agents, locations)
 
     if skills.isEmpty then printEmptyFiltered(agents, locations)
     else displaySkills(skills)
   }
+
+  /** Skills for the agents and locations. A skill in a skills dir that more than one agent uses
+    * is collected one time, as the first of those agents.
+    */
+  private[commands] def collectSkills(agents: List[Agent], locations: List[SkillLocation]): List[Skill] =
+    (for {
+      agent    <- agents
+      location <- locations
+      skill    <- Skills.findSkillsByAgent(agent, location)
+    } yield skill).distinctBy(_.path)
 
   private def listInteractive(): Unit = {
     val allSkills = Skills.findAllSkills()

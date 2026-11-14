@@ -15,11 +15,16 @@ object AgentSpec extends Properties {
     example("Universal: globalDirName is .agents", testUniversalGlobalDir),
     example("Claude: projectDirName is .claude", testClaudeProjectDir),
     example("Copilot: asymmetric dirs (.github project, .copilot global)", testCopilotAsymmetry),
-    example("all: has 7 agents", testAllCount),
-    example("allNonUniversal: has 6 agents", testAllNonUniversalCount),
+    example("Antigravity: asymmetric dirs (.agents project, .gemini/config global)", testAntigravityAsymmetry),
+    example("all: has 8 agents", testAllCount),
+    example("allNonUniversal: has 7 agents", testAllNonUniversalCount),
     example("allNonUniversal: excludes Universal", testAllNonUniversalExcludes),
+    example("all: Antigravity is directly before Gemini", testAntigravityBeforeGemini),
     example("needsAgentsMd: true for Universal and Codex", testNeedsAgentsMd),
-    example("needsAgentsMd: false for Claude, Cursor, Gemini, Windsurf, Copilot", testDoesNotNeedAgentsMd),
+    example(
+      "needsAgentsMd: false for Claude, Cursor, Antigravity, Gemini, Windsurf, Copilot",
+      testDoesNotNeedAgentsMd
+    ),
     example("Encoder/Decoder: round-trip", testEncoderDecoderRoundTrip),
     example("globalDirOverride: expected env var mapping per agent", testGlobalDirOverrideMapping),
   )
@@ -31,6 +36,7 @@ object AgentSpec extends Properties {
         Agent.fromString("claude") ==== Agent.Claude.asRight,
         Agent.fromString("cursor") ==== Agent.Cursor.asRight,
         Agent.fromString("codex") ==== Agent.Codex.asRight,
+        Agent.fromString("antigravity") ==== Agent.Antigravity.asRight,
         Agent.fromString("gemini") ==== Agent.Gemini.asRight,
         Agent.fromString("windsurf") ==== Agent.Windsurf.asRight,
         Agent.fromString("copilot") ==== Agent.Copilot.asRight,
@@ -85,14 +91,25 @@ object AgentSpec extends Properties {
       )
     )
 
+  private def testAntigravityAsymmetry: Result =
+    Result.all(
+      List(
+        Agent.Antigravity.projectDirName ==== ".agents",
+        Agent.Antigravity.globalDirName ==== ".gemini/config",
+      )
+    )
+
   private def testAllCount: Result =
-    Agent.all.length ==== 7
+    Agent.all.length ==== 8
 
   private def testAllNonUniversalCount: Result =
-    Agent.allNonUniversal.length ==== 6
+    Agent.allNonUniversal.length ==== 7
 
   private def testAllNonUniversalExcludes: Result =
     Result.assert(!Agent.allNonUniversal.contains(Agent.Universal))
+
+  private def testAntigravityBeforeGemini: Result =
+    Agent.all.indexOf(Agent.Antigravity) + 1 ==== Agent.all.indexOf(Agent.Gemini)
 
   private def testNeedsAgentsMd: Result =
     Result.all(
@@ -107,6 +124,7 @@ object AgentSpec extends Properties {
       List(
         Result.assert(!Agent.needsAgentsMd(Agent.Claude)),
         Result.assert(!Agent.needsAgentsMd(Agent.Cursor)),
+        Result.assert(!Agent.needsAgentsMd(Agent.Antigravity)),
         Result.assert(!Agent.needsAgentsMd(Agent.Gemini)),
         Result.assert(!Agent.needsAgentsMd(Agent.Windsurf)),
         Result.assert(!Agent.needsAgentsMd(Agent.Copilot)),
@@ -129,6 +147,7 @@ object AgentSpec extends Properties {
         Agent.Claude.globalDirOverride ==== GlobalDirOverride.ConfigDir("CLAUDE_CONFIG_DIR"),
         Agent.Cursor.globalDirOverride ==== GlobalDirOverride.NoOverride,
         Agent.Codex.globalDirOverride ==== GlobalDirOverride.ConfigDir("CODEX_HOME"),
+        Agent.Antigravity.globalDirOverride ==== GlobalDirOverride.NoOverride,
         Agent.Gemini.globalDirOverride ==== GlobalDirOverride.HomeRoot("GEMINI_CLI_HOME"),
         Agent.Windsurf.globalDirOverride ==== GlobalDirOverride.NoOverride,
         Agent.Copilot.globalDirOverride ==== GlobalDirOverride.ConfigDir("COPILOT_HOME"),

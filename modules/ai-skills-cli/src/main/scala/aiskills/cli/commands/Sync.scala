@@ -3,7 +3,7 @@ package aiskills.cli.commands
 import OverwritePrompt.{BulkDecision, OverwriteChoice}
 import aiskills.cli.CliDefaults
 import aiskills.core.utils.{AgentsMd, Dirs, SkillFiles, SkillHash, SkillMetadata, Skills, TerminalWidth, Yaml}
-import aiskills.core.{Agent, Skill, SkillLocation, SkillSourceMetadata, SyncOptions}
+import aiskills.core.{Agent, Skill, SkillLocation, SkillSourceMetadata, SyncOptions, given}
 import cats.syntax.all.*
 import cue4s.*
 import extras.scala.io.syntax.color.*
@@ -38,13 +38,13 @@ object Sync {
             sys.exit(1)
           }
 
-          targets.filterNot(_ === from).foreach { target =>
-            syncSelectedSkillsWithLocations(found, from, target, sourceLocation, targetLocations, options.yes)
+          syncToTargets(targets, from, targetLocations) { (target, locations) =>
+            syncSelectedSkillsWithLocations(found, from, target, sourceLocation, locations, options.yes)
           }
         } else {
           // All skills
-          targets.filterNot(_ === from).foreach { target =>
-            syncAllSkillsWithLocations(from, target, sourceLocation, targetLocations, options.yes)
+          syncToTargets(targets, from, targetLocations) { (target, locations) =>
+            syncAllSkillsWithLocations(from, target, sourceLocation, locations, options.yes)
           }
         }
 
@@ -86,13 +86,15 @@ object Sync {
   ): Unit = {
     if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
     else {
-      val sourceSkills = Skills.findSkillsByAgent(from, sourceLocation)
+      val effectiveLocations = effectiveTargetLocations(from, to, sourceLocation, targetLocations)
+      val sourceSkills       = Skills.findSkillsByAgent(from, sourceLocation)
 
-      if sourceSkills.isEmpty then println(
+      if effectiveLocations.isEmpty then ()
+      else if sourceSkills.isEmpty then println(
         s"No skills found in ${from.toString} (${sourceLocation.toString.toLowerCase}).".yellow
       )
       else {
-        val targetLabel = targetLocations.map(_.toString.toLowerCase).mkString(" and ")
+        val targetLabel = effectiveLocations.map(_.toString.toLowerCase).mkString(" and ")
         println(
           s"Syncing ${sourceSkills.length} skill(s) from ${from.toString} (${sourceLocation.toString.toLowerCase}) to ${to.toString} ($targetLabel)...".dim
         )
@@ -100,7 +102,7 @@ object Sync {
         val (synced, _) =
           sourceSkills.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
             case ((count, bulk), s) =>
-              targetLocations.foldLeft((count, bulk)) {
+              effectiveLocations.foldLeft((count, bulk)) {
                 case ((count, bulk), targetLocation) =>
                   val targetDir  = Dirs.getSkillsDir(to, targetLocation)
                   val targetPath = targetDir / s.name
@@ -175,7 +177,7 @@ object Sync {
           s"\n\u2705 Sync complete: $synced skill(s) synced from ${from.toString} to ${to.toString}".green
         )
 
-        targetLocations.foreach { targetLocation =>
+        effectiveLocations.foreach { targetLocation =>
           AgentsMd.updateAgentsMdForAgent(to, targetLocation)
         }
       }
@@ -190,10 +192,13 @@ object Sync {
     targetLocations: List[SkillLocation],
     yes: Boolean,
   ): Unit = {
+    lazy val effectiveLocations = effectiveTargetLocations(from, to, sourceLocation, targetLocations)
+
     if from === to then println(s"Skipped: source and target are the same agent (${from.toString})".yellow)
+    else if effectiveLocations.isEmpty then ()
     else if selectedSkills.isEmpty then println("No skills selected.".yellow)
     else {
-      val targetLabel = targetLocations.map(_.toString.toLowerCase).mkString(" and ")
+      val targetLabel = effectiveLocations.map(_.toString.toLowerCase).mkString(" and ")
       println(
         s"Syncing ${selectedSkills.length} skill(s) from ${from.toString} (${sourceLocation.toString.toLowerCase}) to ${to.toString} ($targetLabel)...".dim
       )
@@ -201,7 +206,7 @@ object Sync {
       val (synced, _) =
         selectedSkills.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
           case ((count, bulk), s) =>
-            targetLocations.foldLeft((count, bulk)) {
+            effectiveLocations.foldLeft((count, bulk)) {
               case ((count, bulk), targetLocation) =>
                 val targetDir  = Dirs.getSkillsDir(to, targetLocation)
                 val targetPath = targetDir / s.name
@@ -276,9 +281,49 @@ object Sync {
         s"\n\u2705 Sync complete: $synced skill(s) synced from ${from.toString} to ${to.toString}".green
       )
 
-      targetLocations.foreach { targetLocation =>
+      effectiveLocations.foreach { targetLocation =>
         AgentsMd.updateAgentsMdForAgent(to, targetLocation)
       }
+    }
+  }
+
+  /** Remove the target locations whose skills dir is the source dir, and print one line for each.
+    * Then print the shared dir note for each remaining location.
+    */
+  private def effectiveTargetLocations(
+    from: Agent,
+    to: Agent,
+    sourceLocation: SkillLocation,
+    targetLocations: List[SkillLocation],
+  ): List[SkillLocation] = {
+    val sourceDir                     = Dirs.getSkillsDir(from, sourceLocation)
+    val (sameDir, effectiveLocations) =
+      targetLocations.partition(targetLocation => Dirs.getSkillsDir(to, targetLocation) === sourceDir)
+
+    sameDir.foreach { targetLocation =>
+      println(
+        s"Skipped: ${from.toString} (${sourceLocation.toString.toLowerCase}) and ${to.toString} (${targetLocation.toString.toLowerCase}) use the same folder (${Dirs.displaySkillsDir(to, targetLocation)}).".yellow
+      )
+    }
+    effectiveLocations.foreach { targetLocation =>
+      InteractiveHelper.sharedDirNote(to, targetLocation).foreach(note => println(note.yellow))
+    }
+    effectiveLocations
+  }
+
+  /** Remove the targets that are the source agent or that use a skills dir of an earlier target,
+    * print one line for each skipped target, then call `f` for each kept agent with its locations.
+    */
+  private def syncToTargets(
+    targets: List[Agent],
+    from: Agent,
+    targetLocations: List[SkillLocation],
+  )(f: (Agent, List[SkillLocation]) => Unit): Unit = {
+    val deduped = Dirs.dedupeAgentLocationTargets(targets.filterNot(_ === from), targetLocations)
+    InteractiveHelper.printSkippedTargets(deduped.skipped)
+
+    deduped.kept.map { case (agent, _) => agent }.distinct.foreach { agent =>
+      f(agent, deduped.kept.collect { case (a, location) if a === agent => location })
     }
   }
 
@@ -486,7 +531,7 @@ object Sync {
 
               // Step 5: Pick target agents
               val targetAgents = Agent.all.filterNot(_ === from)
-              val targetLabels = targetAgents.map(_.toString)
+              val targetLabels = targetAgents.map(InteractiveHelper.targetAgentLabel)
 
               val selectedTargets = {
                 aiskills.cli.SigintHandler.install()
@@ -495,7 +540,7 @@ object Sync {
                     CliDefaults.mandatoryMultiChoiceNoneSelected("Select target agent(s)", targetLabels)
                   ) match {
                     case Completion.Finished(selectedLabels) =>
-                      targetAgents.filter(a => selectedLabels.contains(a.toString)).asRight
+                      InteractiveHelper.selectAgentsByLabels(targetAgents, selectedLabels).asRight
                     case Completion.Fail(CompletionError.Interrupted) =>
                       println("\n\nCancelled by user".yellow)
                       0.asLeft
@@ -512,8 +557,8 @@ object Sync {
 
               if selectedTargets.isEmpty then println("No target agents selected.".yellow)
               else
-                selectedTargets.foreach { target =>
-                  syncSelectedSkillsWithLocations(selectedSkills, from, target, sourceLocation, targetLocations, yes)
+                syncToTargets(selectedTargets, from, targetLocations) { (target, locations) =>
+                  syncSelectedSkillsWithLocations(selectedSkills, from, target, sourceLocation, locations, yes)
                 }
             }
         }

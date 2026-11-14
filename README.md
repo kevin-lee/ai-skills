@@ -27,15 +27,24 @@ Built with Scala 3 and Scala Native - compiles to a standalone binary with no JV
 
 ## Supported Agents
 
-| Agent         | Project Dir         | Global Dir                    |
-|---------------|---------------------|-------------------------------|
-| **Universal** | `.agents/skills/`   | `~/.agents/skills/`           |
-| **Claude**    | `.claude/skills/`   | `~/.claude/skills/`           |
-| **Cursor**    | `.cursor/skills/`   | `~/.cursor/skills/`           |
-| **Codex**     | `.codex/skills/`    | `~/.codex/skills/`            |
-| **Gemini**    | `.gemini/skills/`   | `~/.gemini/skills/`           |
-| **Windsurf**  | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` |
-| **Copilot**   | `.github/skills/`   | `~/.copilot/skills/`          |
+| Agent           | Project Dir         | Global Dir                    |
+|-----------------|---------------------|-------------------------------|
+| **Universal**   | `.agents/skills/`   | `~/.agents/skills/`           |
+| **Claude**      | `.claude/skills/`   | `~/.claude/skills/`           |
+| **Cursor**      | `.cursor/skills/`   | `~/.cursor/skills/`           |
+| **Codex**       | `.codex/skills/`    | `~/.codex/skills/`            |
+| **Antigravity** | `.agents/skills/`   | `~/.gemini/config/skills/`    |
+| **Gemini**      | `.gemini/skills/`   | `~/.gemini/skills/`           |
+| **Windsurf**    | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` |
+| **Copilot**     | `.github/skills/`   | `~/.copilot/skills/`          |
+
+### Notes on Antigravity and Gemini
+
+- **Antigravity** covers both the Antigravity CLI (`agy`) and the Antigravity App. Both read `.agents/skills/` in the project and `~/.gemini/config/skills/` globally.
+- The Antigravity project folder `.agents/skills/` is the same folder as Universal. `aiskills` installs a skill there only one time when you select both, shows those skills under Universal in interactive commands, and keeps the project `AGENTS.md` up to date. Removing a project skill for Antigravity also removes it for Universal.
+- **Gemini** is for Gemini CLI. Gemini CLI is now available only to Gemini Code Assist Standard and Enterprise users and to paid API key users. Use Antigravity in other cases.
+- The Antigravity CLI also reads `~/.gemini/skills/`. A skill installed globally for both Gemini and Antigravity is loaded two times in the Antigravity CLI.
+- To copy existing Gemini skills to Antigravity: `aiskills sync --from project:gemini --to antigravity --project` (or `aiskills sync --from global:gemini --to antigravity --global`).
 
 ### Custom Global Config Locations
 
@@ -52,6 +61,7 @@ Notes:
 - **Universal** (`~/.agents`) has no standard env var across agents, so it always stays under `$HOME`.
 - **Cursor**: `CURSOR_CONFIG_DIR` is only documented for the CLI's `cli-config.json`, not for skills, so it is not honored.
 - **Windsurf** has no documented mechanism to relocate `~/.codeium/windsurf`.
+- **Antigravity** has no documented env var to relocate `~/.gemini/config`. `GEMINI_CLI_HOME` does not change it.
 - Project-level directories are never relocated - no agent supports a custom project dir location.
 - Empty variable values are ignored. A leading `~` expands to your home directory; relative paths resolve against the current directory.
 
@@ -230,22 +240,23 @@ Instructions and context for the AI agent...
 
 Skills are searched in the following directories, in priority order:
 
-| Priority | Path                            | Scope              |
-|----------|---------------------------------|--------------------|
-| 1        | `./.agents/skills/`             | Project universal  |
-| 2        | `./.claude/skills/`             | Project Claude     |
-| 3        | `./.codex/skills/`              | Project Codex      |
-| 4        | `./.github/skills/`             | Project Copilot    |
-| 5        | `./.cursor/skills/`             | Project Cursor     |
-| 6        | `./.gemini/skills/`             | Project Gemini     |
-| 7        | `./.windsurf/skills/`           | Project Windsurf   |
-| 8        | `~/.agents/skills/`             | Global universal   |
-| 9        | `~/.claude/skills/`             | Global Claude      |
-| 10       | `~/.codex/skills/`              | Global Codex       |
-| 11       | `~/.copilot/skills/`            | Global Copilot     |
-| 12       | `~/.cursor/skills/`             | Global Cursor      |
-| 13       | `~/.gemini/skills/`             | Global Gemini      |
-| 14       | `~/.codeium/windsurf/skills/`   | Global Windsurf    |
+| Priority | Path                            | Scope                             |
+|----------|---------------------------------|-----------------------------------|
+| 1        | `./.agents/skills/`             | Project universal and Antigravity |
+| 2        | `./.claude/skills/`             | Project Claude                    |
+| 3        | `./.codex/skills/`              | Project Codex                     |
+| 4        | `./.github/skills/`             | Project Copilot                   |
+| 5        | `./.cursor/skills/`             | Project Cursor                    |
+| 6        | `./.gemini/skills/`             | Project Gemini                    |
+| 7        | `./.windsurf/skills/`           | Project Windsurf                  |
+| 8        | `~/.agents/skills/`             | Global universal                  |
+| 9        | `~/.claude/skills/`             | Global Claude                     |
+| 10       | `~/.codex/skills/`              | Global Codex                      |
+| 11       | `~/.copilot/skills/`            | Global Copilot                    |
+| 12       | `~/.cursor/skills/`             | Global Cursor                     |
+| 13       | `~/.gemini/config/skills/`      | Global Antigravity                |
+| 14       | `~/.gemini/skills/`             | Global Gemini                     |
+| 15       | `~/.codeium/windsurf/skills/`   | Global Windsurf                   |
 
 Global paths follow the environment variables in [Custom Global Config Locations](#custom-global-config-locations) when they are set. When the current directory is your home directory, the project entries are left out because they resolve to the same paths as the global ones.
 

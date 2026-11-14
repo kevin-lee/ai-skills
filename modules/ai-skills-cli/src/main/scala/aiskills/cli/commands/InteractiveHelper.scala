@@ -1,11 +1,43 @@
 package aiskills.cli.commands
 
-import aiskills.core.{Agent, Skill, SkillLocation}
+import aiskills.core.{Agent, Skill, SkillLocation, SkippedTarget}
 import aiskills.core.utils.Dirs
 import cats.syntax.all.*
 import extras.scala.io.syntax.color.*
 
 object InteractiveHelper {
+
+  /** Note for an agent whose skills dir at `location` is the same as the dir of other agents.
+    * e.g. "Note: Antigravity project skills are in .agents/skills, the same folder as Universal."
+    */
+  def sharedDirNote(agent: Agent, location: SkillLocation): Option[String] =
+    Dirs.sharedSkillsDirAgents(agent, location) match {
+      case Nil => none
+      case others =>
+        s"Note: ${agent.toString} ${location.toString.toLowerCase} skills are in ${Dirs.displaySkillsDir(agent, location)}, the same folder as ${others.map(_.toString).mkString(", ")}.".some
+    }
+
+  /** Label for a target agent in an interactive agent picker.
+    * e.g. "Antigravity (project: .agents/skills, same folder as Universal)", "Claude"
+    */
+  def targetAgentLabel(agent: Agent): String =
+    Dirs.sharedSkillsDirAgents(agent, SkillLocation.Project) match {
+      case Nil => agent.toString
+      case others =>
+        s"${agent.toString} (project: ${Dirs.displaySkillsDir(agent, SkillLocation.Project)}, same folder as ${others.map(_.toString).mkString(", ")})"
+    }
+
+  /** Agents whose targetAgentLabel is in the selected labels, in the order of `agents`. */
+  def selectAgentsByLabels(agents: List[Agent], selectedLabels: List[String]): List[Agent] =
+    agents.filter(a => selectedLabels.contains(targetAgentLabel(a)))
+
+  /** Print one line for each target that is skipped because an earlier target has the same skills dir. */
+  def printSkippedTargets(skipped: List[SkippedTarget]): Unit =
+    skipped.foreach { s =>
+      println(
+        s"Skipped: ${s.agent.toString} (${s.location.toString.toLowerCase}) uses the same folder as ${s.sameAs.toString} (${Dirs.displaySkillsDir(s.agent, s.location)}).".yellow
+      )
+    }
 
   /** Pure decision: returns Some(location) if only one location has skills, None if both do. */
   def resolveLocations(allSkills: List[Skill]): Option[SkillLocation] = {

@@ -24,7 +24,24 @@ object AgentsMdSpec extends Properties {
     example("parseCurrentSkills: parses skills from kebab-case tags", testParseKebabCase),
     example("generateSkillsXml: includes agent element", testAgentElement),
     example("removeSkillsSection: cleans up generated skills XML after last skill removal", testRemoveAfterLastSkill),
+    example(
+      "shouldUpdateAgentsMd: true for agents that share a dir with Universal or Codex",
+      testShouldUpdateAgentsMd
+    ),
   )
+
+  private def testShouldUpdateAgentsMd: Result = {
+    val env = Map.empty[String, String]
+    Result.all(
+      List(
+        Result.assert(AgentsMd.shouldUpdateAgentsMd(Agent.Universal, SkillLocation.Project, env)),
+        Result.assert(AgentsMd.shouldUpdateAgentsMd(Agent.Codex, SkillLocation.Global, env)),
+        Result.assert(AgentsMd.shouldUpdateAgentsMd(Agent.Antigravity, SkillLocation.Project, env)),
+        Result.assert(!AgentsMd.shouldUpdateAgentsMd(Agent.Antigravity, SkillLocation.Global, env)),
+        Result.assert(!AgentsMd.shouldUpdateAgentsMd(Agent.Claude, SkillLocation.Project, env)),
+      )
+    )
+  }
 
   private val sampleSkills = List(
     Skill("pdf", "PDF manipulation", SkillLocation.Project, Agent.Claude, os.pwd / "path" / "to" / "pdf"),
