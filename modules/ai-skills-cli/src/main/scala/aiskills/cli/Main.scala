@@ -284,19 +284,34 @@ object Main {
           |a terminal prompt offers default-branch tracking. Without terminal
           |input, that update is skipped and the branch selection is retained.
           |
+          |When the skills to update exist in both global and project scope, a
+          |terminal prompt asks the scope (global, project or both). Use --project
+          |and/or --global to choose the scope without a prompt. Without terminal
+          |input and without these flags, both scopes are updated.
+          |
           |Examples:
           |  aiskills update                              # Update all installed skills
           |  aiskills update commit                       # Update a single skill
           |  aiskills update commit review-pr             # Update specific skills
           |  aiskills update --force commit               # Update even if unchanged or locally edited
+          |  aiskills update --project                    # Update project skills only
+          |  aiskills update --global                     # Update global skills only
+          |  aiskills update commit --global              # Update a skill in global scope only
+          |  aiskills update --project --global           # Update both scopes without a prompt
           |""".stripMargin,
       ) {
-        val names = Opts.arguments[String](metavar = "skill-names").orEmpty
-        val force =
+        val names   = Opts.arguments[String](metavar = "skill-names").orEmpty
+        val force   =
           Opts.flag("force", "Update even when a skill is up to date or has local changes", short = "f").orFalse
+        val project = Opts.flag("project", "Update project skills only", short = "p").orFalse
+        val global  = Opts.flag("global", "Update global skills only", short = "g").orFalse
 
-        (names, force).mapN { (ns, f) =>
-          Update.updateSkills(ns, if f then Update.UpdateMode.Force else Update.UpdateMode.Normal)
+        (names, force, project, global).mapN { (ns, f, p, g) =>
+          val locations: Set[SkillLocation] = Set.concat(
+            if p then Set(SkillLocation.Project) else Set.empty,
+            if g then Set(SkillLocation.Global) else Set.empty,
+          )
+          Update.updateSkills(ns, if f then Update.UpdateMode.Force else Update.UpdateMode.Normal, locations)
         }
       }
 

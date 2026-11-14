@@ -182,6 +182,20 @@ Use `--force` (`-f`) to update regardless:
 aiskills update --force commit
 ```
 
+### Choosing the scope
+
+When the skills to update exist in both global and project scope, `update` asks the scope (`global`, `project` or `both`). With skill names, it asks only when the named skills exist in both scopes. When they exist in one scope only, that scope is used without a prompt.
+
+Use `--project` (`-p`) and/or `--global` (`-g`) to choose the scope without a prompt:
+
+```bash
+aiskills update --project          # Project skills only
+aiskills update --global commit    # The commit skill in global scope only
+aiskills update --project --global # Both scopes
+```
+
+Without terminal input (for example in Continuous Integration (CI)) and without these flags, both scopes are updated.
+
 `.aiskills.json` records what the check needs:
 
 - `commit`: the Git commit the installed content came from (Git sources only)
