@@ -46,7 +46,41 @@ object InteractiveHelperSpec extends Properties {
     // reportAgentResolutionThen
     example("reportAgentResolutionThen: Some passes resolved to continuation", testReportAgentSome),
     example("reportAgentResolutionThen: None passes None to continuation", testReportAgentNone),
+    // targetAgentLabel
+    example("targetAgentLabel: shows the shared project dir for Antigravity and Universal", testTargetAgentLabel),
+    // sharedDirNote
+    example("sharedDirNote: Some for Antigravity project, None for Claude project", testSharedDirNote),
+    // selectAgentsByLabels
+    example("selectAgentsByLabels: maps labels back to agents in order", testSelectAgentsByLabels),
   )
+
+  // targetAgentLabel, sharedDirNote and selectAgentsByLabels tests
+
+  private def testTargetAgentLabel: Result =
+    Result.all(
+      List(
+        InteractiveHelper.targetAgentLabel(Agent.Antigravity) ====
+          "Antigravity (project: .agents/skills, same folder as Universal)",
+        InteractiveHelper.targetAgentLabel(Agent.Universal) ====
+          "Universal (project: .agents/skills, same folder as Antigravity)",
+        InteractiveHelper.targetAgentLabel(Agent.Claude) ==== "Claude",
+      )
+    )
+
+  private def testSharedDirNote: Result =
+    Result.all(
+      List(
+        InteractiveHelper.sharedDirNote(Agent.Antigravity, SkillLocation.Project) ====
+          "Note: Antigravity project skills are in .agents/skills, the same folder as Universal.".some,
+        InteractiveHelper.sharedDirNote(Agent.Claude, SkillLocation.Project) ==== none[String],
+      )
+    )
+
+  private def testSelectAgentsByLabels: Result =
+    InteractiveHelper.selectAgentsByLabels(
+      Agent.all,
+      List("Claude", "Antigravity (project: .agents/skills, same folder as Universal)"),
+    ) ==== List(Agent.Claude, Agent.Antigravity)
 
   // resolveLocations tests
 

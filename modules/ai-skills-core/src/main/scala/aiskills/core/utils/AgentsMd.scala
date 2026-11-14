@@ -110,9 +110,21 @@ object AgentsMd {
     }
   }
 
-  /** Update AGENTS.md for agents that need it (e.g., Codex, Universal). */
+  /** True when the agent needs AGENTS.md, or when it shares its skills dir at `location`
+    * with an agent that needs AGENTS.md.
+    */
+  def shouldUpdateAgentsMd(
+    agent: Agent,
+    location: SkillLocation,
+    env: Map[String, String] = sys.env // scalafix:ok DisableSyntax.defaultArgs
+  ): Boolean =
+    Agent.needsAgentsMd(agent) || Dirs.sharedSkillsDirAgents(agent, location, env).exists(Agent.needsAgentsMd)
+
+  /** Update AGENTS.md for agents that need it (e.g., Codex, Universal, and agents that share
+    * a skills dir with them, such as Antigravity in a project).
+    */
   def updateAgentsMdForAgent(agent: Agent, location: SkillLocation): Unit = {
-    if Agent.needsAgentsMd(agent) then {
+    if shouldUpdateAgentsMd(agent, location) then {
       val outputPath = location match {
         case SkillLocation.Global => os.home / "AGENTS.md"
         case SkillLocation.Project => os.pwd / "AGENTS.md"

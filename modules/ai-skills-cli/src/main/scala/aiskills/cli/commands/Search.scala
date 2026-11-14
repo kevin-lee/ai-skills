@@ -310,10 +310,16 @@ object Search {
       (c.skillDir, installName, metadata)
     }
 
+    val deduped = Dirs.dedupeAgentLocationTargets(agents, locations.toList)
+    InteractiveHelper.printSkippedTargets(deduped.skipped)
+    deduped.kept.foreach {
+      case (agent, location) =>
+        InteractiveHelper.sharedDirNote(agent, location).foreach(note => println(note.yellow))
+    }
+
     val installTargets = for {
       (skillDir, installName, metadata) <- skillEntries
-      agent                             <- agents
-      location                          <- locations.toList
+      (agent, location)                 <- deduped.kept
     } yield (skillDir, installName, agent, location, metadata)
 
     val (installedCount, _) = installTargets.foldLeft((0, BulkDecision.Undecided: BulkDecision)) {
@@ -504,12 +510,12 @@ object Search {
   }
 
   private def promptForAgents(): Either[Int, List[Agent]] = {
-    val agentLabels = Agent.all.map(_.toString)
+    val agentLabels = Agent.all.map(InteractiveHelper.targetAgentLabel)
     aiskills.cli.SigintHandler.install()
     Prompts.sync.use { prompts =>
       prompts.run(CliDefaults.mandatoryMultiChoiceNoneSelected("Select target agent(s)", agentLabels)) match {
         case Completion.Finished(selectedLabels) =>
-          Agent.all.filter(a => selectedLabels.contains(a.toString)).asRight
+          InteractiveHelper.selectAgentsByLabels(Agent.all, selectedLabels).asRight
         case Completion.Fail(CompletionError.Interrupted) =>
           println("\n\nCancelled by user".yellow)
           0.asLeft

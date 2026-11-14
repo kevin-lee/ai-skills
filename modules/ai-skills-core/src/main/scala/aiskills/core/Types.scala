@@ -41,6 +41,7 @@ enum Agent(
   case Claude extends Agent(".claude", ".claude", GlobalDirOverride.ConfigDir("CLAUDE_CONFIG_DIR"))
   case Cursor extends Agent(".cursor", ".cursor", GlobalDirOverride.NoOverride)
   case Codex extends Agent(".codex", ".codex", GlobalDirOverride.ConfigDir("CODEX_HOME"))
+  case Antigravity extends Agent(".agents", ".gemini/config", GlobalDirOverride.NoOverride)
   case Gemini extends Agent(".gemini", ".gemini", GlobalDirOverride.HomeRoot("GEMINI_CLI_HOME"))
   case Windsurf extends Agent(".windsurf", ".codeium/windsurf", GlobalDirOverride.NoOverride)
   case Copilot extends Agent(".github", ".copilot", GlobalDirOverride.ConfigDir("COPILOT_HOME"))
@@ -59,7 +60,7 @@ object Agent {
   def needsAgentsMd(agent: Agent): Boolean =
     agent match {
       case Agent.Universal | Agent.Codex => true
-      case Agent.Claude | Agent.Cursor | Agent.Gemini | Agent.Windsurf | Agent.Copilot => false
+      case Agent.Claude | Agent.Cursor | Agent.Antigravity | Agent.Gemini | Agent.Windsurf | Agent.Copilot => false
     }
 
   given Encoder[Agent] = Encoder.encodeString.contramap(_.toString.toLowerCase)
@@ -90,6 +91,16 @@ object SkillLocation {
 
   given Decoder[SkillLocation] = Decoder.decodeString.emap(fromString)
 }
+
+/** A target that is not used because an earlier target (`sameAs`) has the same skills dir. */
+final case class SkippedTarget(agent: Agent, location: SkillLocation, sameAs: Agent) derives Eq, Show
+
+/** Install or sync targets after removing the targets whose skills dir is already used by an earlier target. */
+final case class DedupedTargets(
+  kept: List[(Agent, SkillLocation)],
+  skipped: List[SkippedTarget],
+) derives Eq,
+      Show
 
 final case class Skill(
   name: String,
