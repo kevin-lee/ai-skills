@@ -41,6 +41,8 @@ object Update {
     case Ask
   }
 
+  final case class ScopeTargets(missing: List[String], targets: List[Skill]) derives Eq, Show
+
   enum SourceState derives Eq, Show {
     case Unchanged, Changed, Unknown
   }
@@ -123,6 +125,25 @@ object Update {
     case SkillLocation.Project => none[String]
   }
 
+  /** Keep the skills in the flag scopes (all skills when no flag is given), then keep the requested names.
+    * `missing` holds the requested names that are not in the kept skills. With no requested names, all kept skills are targets.
+    */
+  private[commands] def scopeTargets(
+    skills: List[Skill],
+    requested: List[String],
+    flagLocations: Set[SkillLocation],
+  ): ScopeTargets = {
+    val scoped =
+      if flagLocations.nonEmpty then skills.filter(s => flagLocations.contains(s.location)) else skills
+    if requested.nonEmpty then {
+      val requestedSet = requested.toSet
+      ScopeTargets(
+        missing = requested.filterNot(name => scoped.exists(_.name === name)),
+        targets = scoped.filter(s => requestedSet.contains(s.name)),
+      )
+    } else ScopeTargets(missing = Nil, targets = scoped)
+  }
+
   /** Decide which scopes to update for the name-matched targets. */
   private[commands] def decideScope(
     targets: List[Skill],
@@ -139,7 +160,8 @@ object Update {
         case None => ScopeDecision.Ask
       }
 
-  private def resolveScope(decision: ScopeDecision): Either[Int, List[SkillLocation]] =
+  /** Turn a scope decision into locations. Prints the one-scope message for Resolved, and prompts for Ask. */
+  private[commands] def resolveScope(decision: ScopeDecision): Either[Int, List[SkillLocation]] =
     decision match {
       case ScopeDecision.Use(locations) => locations.asRight
       case ScopeDecision.Resolved(location) =>
@@ -300,26 +322,23 @@ object Update {
       println(s"  ${"aiskills install anthropics/skills".cyan}         ${"# Project (default)".dim}")
       println(s"  ${"aiskills install owner/skill --global".cyan}     ${"# Global (advanced)".dim}")
     } else {
-      val scoped  =
-        if flagLocations.nonEmpty then skills.filter(s => flagLocations.contains(s.location)) else skills
-      val targets =
-        if requested.nonEmpty then {
-          val requestedSet = requested.toSet
-          val missing      = requested.filterNot(name => scoped.exists(_.name === name))
-          if missing.nonEmpty then println(s"Skipping missing skills: ${missing.mkString(", ")}".yellow)
-          else ()
-          scoped.filter(s => requestedSet.contains(s.name))
-        } else
-          scoped
+      scopeTargets(skills, requested, flagLocations) match {
+        case ScopeTargets(missing, targets) =>
 
-      if targets.isEmpty then println("No matching skills to update.".yellow)
-      else {
-        val interactivity = if (GitClone.isStdinTty) Interactivity.Allowed else Interactivity.NotAllowed
-        resolveScope(decideScope(targets, flagLocations, interactivity)) match {
-          case Left(code) => sys.exit(code)
-          case Right(locations) =>
-            updateTargets(targets.filter(s => locations.contains(s.location)), mode, interactivity)
-        }
+          if missing.nonEmpty
+          then println(s"Skipping missing skills: ${missing.mkString(", ")}".yellow)
+          else ()
+
+          if targets.isEmpty
+          then println("No matching skills to update.".yellow)
+          else {
+            val interactivity = if (GitClone.isStdinTty) Interactivity.Allowed else Interactivity.NotAllowed
+            resolveScope(decideScope(targets, flagLocations, interactivity)) match {
+              case Left(code) => sys.exit(code)
+              case Right(locations) =>
+                updateTargets(targets.filter(s => locations.contains(s.location)), mode, interactivity)
+            }
+          }
       }
     }
   }
