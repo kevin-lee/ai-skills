@@ -9,6 +9,7 @@ import Update.{
   LocalState,
   ResolvedUpdateSource,
   ResultStatus,
+  ScopeDecision,
   SourceState,
   SwitchBranchChoice,
   UpdateDecision,
@@ -39,6 +40,11 @@ object UpdateSpec extends Properties {
     example("versionChange describes forced, changed, unrecorded and unknown versions", testVersionChange),
     example("statusLabel pads every status to the same width", testStatusLabel),
     example("checkedAtFor records the time for global skills only", testCheckedAtFor),
+    example("decideScope uses the scope flags without a prompt", testDecideScopeFlags),
+    example("decideScope uses both scopes without a terminal", testDecideScopeNoTerminal),
+    example("decideScope resolves one scope without a prompt", testDecideScopeResolved),
+    example("decideScope asks when the targets are in both scopes", testDecideScopeAsk),
+    example("a scope flag leaves the skills of the other scope untouched", testScopeFlagFilters),
     example("an unchanged source leaves an up-to-date skill untouched", testUnchangedSource),
     example("a commit to another path keeps a skill up to date", testCommitToOtherPath),
     example("local edits with an unchanged source are kept", testLocalEditUnchangedSource),
@@ -456,15 +462,15 @@ object UpdateSpec extends Properties {
   private def fileRemoteMetadata(repo: os.Path, subpath: String): SkillSourceMetadata =
     metadata(none[GitBranch], subpath.some).withRepoUrl(RepoUrl(s"file://$repo").some)
 
-  private def runUpdate(project: os.Path, names: List[String], mode: UpdateMode): Unit =
-    os.dynamicPwd.withValue(project) { Update.updateSkills(names, mode) }
+  private def runUpdate(project: os.Path, names: List[String], mode: UpdateMode, locations: Set[SkillLocation]): Unit =
+    os.dynamicPwd.withValue(project) { Update.updateSkills(names, mode, locations) }
 
   /** Install `skills/present` as a project skill with legacy metadata, then update it once to record versions. */
   private def installPresent(dir: os.Path, fixture: GitFixture): os.Path = {
     val installed = fixture.skillsDir / s"${dir.last}-present"
     writeSkill(installed, "old present")
     SkillMetadata.writeSkillMetadata(installed, fileRemoteMetadata(fixture.repo, "skills/present"))
-    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal)
+    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     installed
   }
 
@@ -481,7 +487,7 @@ object UpdateSpec extends Properties {
     SkillMetadata.writeSkillMetadata(present, presentMeta)
     SkillMetadata.writeSkillMetadata(missing, missingMeta)
     val missingBefore = os.read(missing / "SKILL.md")
-    runUpdate(fixture.project, List(presentName, missingName), UpdateMode.Normal)
+    runUpdate(fixture.project, List(presentName, missingName), UpdateMode.Normal, Set(SkillLocation.Project))
     Result.all(
       List(
         Result.assert(os.read(present / "SKILL.md").contains("new default content")),
@@ -567,13 +573,77 @@ object UpdateSpec extends Properties {
     )
   }
 
+  private def scopeSkill(name: String, location: SkillLocation): Skill =
+    Skill(name = name, description = "test", location = location, agent = Agent.Claude, path = os.pwd / name)
+
+  private val bothScopeTargets: List[Skill] =
+    List(scopeSkill("commit", SkillLocation.Global), scopeSkill("commit", SkillLocation.Project))
+
+  private def testDecideScopeFlags: Result =
+    Result.all(
+      List(
+        Update.decideScope(bothScopeTargets, Set(SkillLocation.Project), Interactivity.Allowed) ====
+          ScopeDecision.Use(List(SkillLocation.Project)),
+        Update.decideScope(bothScopeTargets, Set(SkillLocation.Global), Interactivity.Allowed) ====
+          ScopeDecision.Use(List(SkillLocation.Global)),
+        Update.decideScope(
+          bothScopeTargets,
+          Set(SkillLocation.Project, SkillLocation.Global),
+          Interactivity.Allowed,
+        ) ==== ScopeDecision.Use(List(SkillLocation.Global, SkillLocation.Project)),
+      )
+    )
+
+  private def testDecideScopeNoTerminal: Result =
+    Result.all(
+      List(
+        Update.decideScope(bothScopeTargets, Set.empty, Interactivity.NotAllowed) ====
+          ScopeDecision.Use(List(SkillLocation.Global, SkillLocation.Project)),
+        Update.decideScope(
+          List(scopeSkill("commit", SkillLocation.Project)),
+          Set.empty,
+          Interactivity.NotAllowed,
+        ) ==== ScopeDecision.Use(List(SkillLocation.Global, SkillLocation.Project)),
+      )
+    )
+
+  private def testDecideScopeResolved: Result =
+    Result.all(
+      List(
+        Update.decideScope(List(scopeSkill("commit", SkillLocation.Project)), Set.empty, Interactivity.Allowed) ====
+          ScopeDecision.Resolved(SkillLocation.Project),
+        Update.decideScope(List(scopeSkill("commit", SkillLocation.Global)), Set.empty, Interactivity.Allowed) ====
+          ScopeDecision.Resolved(SkillLocation.Global),
+      )
+    )
+
+  private def testDecideScopeAsk: Result =
+    Update.decideScope(bothScopeTargets, Set.empty, Interactivity.Allowed) ==== ScopeDecision.Ask
+
+  private def testScopeFlagFilters: Result = withTemp { dir =>
+    val fixture      = gitFixture(dir)
+    val installed    = fixture.skillsDir / s"${dir.last}-present"
+    writeSkill(installed, "old present")
+    SkillMetadata.writeSkillMetadata(installed, fileRemoteMetadata(fixture.repo, "skills/present"))
+    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Global))
+    val afterGlobal  = os.read(installed / "SKILL.md")
+    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
+    val afterProject = os.read(installed / "SKILL.md")
+    Result.all(
+      List(
+        Result.assert(afterGlobal.contains("old present")).log(s"afterGlobal: $afterGlobal"),
+        Result.assert(afterProject.contains("new default content")).log(s"afterProject: $afterProject"),
+      )
+    )
+  }
+
   private def testUnchangedSource: Result = withTemp { dir =>
     val fixture   = gitFixture(dir)
     val installed = installPresent(dir, fixture)
     val m1        = SkillMetadata.readSkillMetadata(installed)
     val content1  = os.read(installed / "SKILL.md")
     val raw1      = os.read(installed / SkillMetadata.SkillMetadataFile)
-    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal)
+    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     Result.all(
       List(
         Result.assert(m1.flatMap(_.sourceHash).isDefined).log(s"m1: $m1"),
@@ -591,7 +661,7 @@ object UpdateSpec extends Properties {
     val m1        = SkillMetadata.readSkillMetadata(installed)
     writeSkill(fixture.repo / "skills" / "other", "other content")
     commitAll(fixture.repo, "Add another skill")
-    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal)
+    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     Result.all(
       List(
         Result.assert(m1.flatMap(_.sourceHash).isDefined).log(s"m1: $m1"),
@@ -605,7 +675,7 @@ object UpdateSpec extends Properties {
     val installed = installPresent(dir, fixture)
     val m1        = SkillMetadata.readSkillMetadata(installed)
     os.write.append(installed / "SKILL.md", "local edit\n")
-    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal)
+    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     Result.all(
       List(
         Result.assert(m1.flatMap(_.installedHash).isDefined).log(s"m1: $m1"),
@@ -623,11 +693,11 @@ object UpdateSpec extends Properties {
     os.write.append(fixture.repo / "skills" / "present" / "SKILL.md", "upstream change\n")
     commitAll(fixture.repo, "Change the present skill")
 
-    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal)
+    runUpdate(fixture.project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     val normalContent = os.read(installed / "SKILL.md")
     val normalMeta    = SkillMetadata.readSkillMetadata(installed)
 
-    runUpdate(fixture.project, List(installed.last), UpdateMode.Force)
+    runUpdate(fixture.project, List(installed.last), UpdateMode.Force, Set(SkillLocation.Project))
     val forcedContent = os.read(installed / "SKILL.md")
     val forcedMeta    = SkillMetadata.readSkillMetadata(installed)
 
@@ -672,12 +742,12 @@ object UpdateSpec extends Properties {
     )
 
     val sourceHash1 = SkillHash.sourceDirectoryHash(source).toOption
-    runUpdate(project, List(installed.last), UpdateMode.Normal)
+    runUpdate(project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     val m1          = SkillMetadata.readSkillMetadata(installed)
-    runUpdate(project, List(installed.last), UpdateMode.Normal)
+    runUpdate(project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     val m2          = SkillMetadata.readSkillMetadata(installed)
     os.write.append(source / "SKILL.md", "source edit\n")
-    runUpdate(project, List(installed.last), UpdateMode.Normal)
+    runUpdate(project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     val m3          = SkillMetadata.readSkillMetadata(installed)
 
     Result.all(
@@ -706,12 +776,12 @@ object UpdateSpec extends Properties {
       metadata(none[GitBranch], none[String]).withRepoUrl(RepoUrl(s"file://$repo").some),
     )
 
-    runUpdate(project, List(installed.last), UpdateMode.Normal)
+    runUpdate(project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
     val gitAfterUpdate = os.exists(installed / ".git")
     val content        = os.read(installed / "SKILL.md")
     val meta           = SkillMetadata.readSkillMetadata(installed)
     val hash           = SkillHash.directoryHash(installed).toOption
-    runUpdate(project, List(installed.last), UpdateMode.Force)
+    runUpdate(project, List(installed.last), UpdateMode.Force, Set(SkillLocation.Project))
 
     Result.all(
       List(
@@ -749,7 +819,7 @@ object UpdateSpec extends Properties {
       )
     )
 
-    runUpdate(project, List(installed.last), UpdateMode.Normal)
+    runUpdate(project, List(installed.last), UpdateMode.Normal, Set(SkillLocation.Project))
 
     Result.all(
       List(

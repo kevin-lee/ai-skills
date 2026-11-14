@@ -3,6 +3,7 @@ package aiskills.cli.commands
 import aiskills.core.{Agent, Skill, SkillLocation, SkippedTarget}
 import aiskills.core.utils.Dirs
 import cats.syntax.all.*
+import cue4s.*
 import extras.scala.io.syntax.color.*
 
 object InteractiveHelper {
@@ -97,6 +98,28 @@ object InteractiveHelper {
       case None => ()
     }
     f(resolved)
+  }
+
+  /** Ask the scope (global, project or both). Left(exit code) when the prompt is cancelled or fails. */
+  def promptForScope(): Either[Int, List[SkillLocation]] = {
+    val options = List("global", "project", "both")
+    aiskills.cli.SigintHandler.install()
+    Prompts.sync.use { prompts =>
+      prompts.singleChoice("Select scope", options) match {
+        case Completion.Finished(selected) =>
+          selected match {
+            case "project" => List(SkillLocation.Project).asRight
+            case "global" => List(SkillLocation.Global).asRight
+            case _ => List(SkillLocation.Global, SkillLocation.Project).asRight
+          }
+        case Completion.Fail(CompletionError.Interrupted) =>
+          println("\n\nCancelled by user".yellow)
+          0.asLeft
+        case Completion.Fail(CompletionError.Error(msg)) =>
+          System.err.println(s"Error: $msg")
+          1.asLeft
+      }
+    }
   }
 
   /** Report agent resolution result, then delegate to continuation.

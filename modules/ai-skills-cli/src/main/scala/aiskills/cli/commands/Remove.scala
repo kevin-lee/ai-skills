@@ -18,7 +18,7 @@ object Remove {
       val locationsResult: Either[Int, List[SkillLocation]] =
         InteractiveHelper.reportLocationResolutionThen("Removing", InteractiveHelper.resolveLocations(allSkills)) {
           case Some(location) => List(location).asRight
-          case None => promptForScope()
+          case None => InteractiveHelper.promptForScope()
         }
 
       locationsResult match {
@@ -108,27 +108,6 @@ object Remove {
           println("\n\nCancelled by user".yellow)
           0.asLeft
 
-        case Completion.Fail(CompletionError.Error(msg)) =>
-          System.err.println(s"Error: $msg")
-          1.asLeft
-      }
-    }
-  }
-
-  private def promptForScope(): Either[Int, List[SkillLocation]] = {
-    val options = List("global", "project", "both")
-    aiskills.cli.SigintHandler.install()
-    Prompts.sync.use { prompts =>
-      prompts.singleChoice("Select scope", options) match {
-        case Completion.Finished(selected) =>
-          selected match {
-            case "project" => List(SkillLocation.Project).asRight
-            case "global" => List(SkillLocation.Global).asRight
-            case _ => List(SkillLocation.Global, SkillLocation.Project).asRight
-          }
-        case Completion.Fail(CompletionError.Interrupted) =>
-          println("\n\nCancelled by user".yellow)
-          0.asLeft
         case Completion.Fail(CompletionError.Error(msg)) =>
           System.err.println(s"Error: $msg")
           1.asLeft
